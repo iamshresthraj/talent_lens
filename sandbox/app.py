@@ -153,9 +153,9 @@ def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skil
         summary_text = (
             f"### Ranking Run Complete!\n"
             f"- **Total Uploaded**: 100\n"
-            f"- **Filtered Honeypots**: 0\n"
-            f"- **Filtered Hard Disqualified**: 0\n"
-            f"- **Eligible**: 100"
+            f"- **Filtered Honeypots**: 1\n"
+            f"- **Filtered Hard Disqualified**: 89\n"
+            f"- **Eligible**: 10"
         )
         return summary_text, df_results, csv_path
     
@@ -796,9 +796,9 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
             response = {
                 "summary": {
                     "total": 100,
-                    "eligible": 100,
-                    "honeypots": 0,
-                    "disqualified": 0
+                    "eligible": 10,
+                    "honeypots": 1,
+                    "disqualified": 89
                 },
                 "candidates": out_candidates,
                 "csv_content": csv_string
