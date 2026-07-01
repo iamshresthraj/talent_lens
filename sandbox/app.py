@@ -66,6 +66,20 @@ def ensure_sample_candidates():
     return sample_path
 
 
+def load_default_jd_text():
+    """Load the ideal_candidate_text from config to pre-fill the editable JD box."""
+    jd_config_path = os.path.join(base_dir, "config", "jd_requirements.yaml")
+    try:
+        with open(jd_config_path, "r", encoding="utf-8") as f:
+            jd_config = yaml.safe_load(f)
+        return (jd_config.get("ideal_candidate_text", "") or "").strip()
+    except Exception:
+        return ""
+
+
+DEFAULT_JD_TEXT = load_default_jd_text()
+
+
 def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skill_w, lexical_w, struct_w, logistics_w, reasoning_mode):
     # Load candidate lists
     if file_obj is None:
@@ -507,8 +521,17 @@ footer {
 with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=css) as demo:
     gr.Markdown(
         """
-        # Redrob AI Candidate Discovery and Ranking Sandbox
-        ### Founding Senior AI Engineer Role - Noida/Pune Hybrid
+        # Talent Lens — Redrob AI Candidate Discovery and Ranking Sandbox
+        ### Founding Senior AI Engineer Role · Noida/Pune Hybrid
+
+        **What this tool does:** Talent Lens ranks candidates by *understanding*
+        the job description and each candidate's full profile — career history,
+        skill depth and proficiency, structural fit, and behavioral signals such
+        as recency and responsiveness — not just by keyword matching. Edit the
+        job description below and the candidates are re-scored live against
+        whatever you type. No login, no accounts, nothing to sign up for — paste
+        a JD (or use the default), optionally upload your own candidates, and
+        click **Rank Candidates**.
         """
     )
     
@@ -525,9 +548,10 @@ with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=
             
             gr.Markdown("### Job Description")
             jd_text_input = gr.Textbox(
-                label="Paste Job Description Text",
-                placeholder="Paste the Job Description text here...",
-                lines=5
+                label="Job Description (editable — candidates are re-embedded against this text)",
+                value=DEFAULT_JD_TEXT,
+                placeholder="Describe the ideal candidate / paste the Job Description text here...",
+                lines=8
             )
             jd_file_input = gr.File(
                 label="Or Upload Job Description (PDF or TXT)",

@@ -52,6 +52,9 @@ complete, runnable code, not a placeholder.
   `validate_submission.py` before declaring done.
 - Filename for final submission: `submission.csv` (rename instructions for the
   actual participant ID go in the README).
+- No login, no authentication, no user accounts anywhere in this project,
+  including the sandbox app. This is a reviewer-facing demo tool, not a product
+  with users — keep it open and frictionless to run.
 
 ---
 
@@ -85,7 +88,7 @@ redrob-ranker/
   rank.py                         # THE single command; produces submission.csv
   validate_submission.py          # copy of the provided validator, unmodified
   sandbox/
-    app.py                        # Gradio app, small-sample end-to-end demo
+    app.py                        # Gradio app: landing panel, editable JD input, candidate upload, ranked output — no auth
     sample_candidates.json        # small bundled sample for the demo
   tests/
     test_rules.py                 # unit tests for honeypot + disqualifier logic on synthetic edge cases
@@ -333,11 +336,25 @@ def generate_reasoning(candidate: dict, facts: dict, mode: str = "template") -> 
    honeypot exclusions, takes top 100, generates reasoning (template mode),
    writes `submission.csv`. Time and memory the run; print both at the end.
 8. Run `python validate_submission.py submission.csv` and fix any validator errors.
-9. Build `sandbox/app.py` (Gradio): accepts a JSON/JSONL upload of ≤100 candidates
-   (or uses the bundled `sandbox/sample_candidates.json`), runs the full pipeline
-   live (embeddings computed on the fly since N is small — no precomputed artifacts
-   needed here), offers the LLM reasoning mode as a toggle, outputs a ranked table
-   and a downloadable CSV.
+9. Build `sandbox/app.py` (Gradio), in this order top to bottom:
+   - A landing/intro panel with the project name and a one-paragraph plain-language
+     explanation of what the tool does (ranks candidates by understanding the JD
+     and the candidate's full profile — career history, skills, behavioral signals
+     — not just keywords). No login, no authentication, no user accounts anywhere
+     in this app.
+   - An editable job-description text input box, pre-filled with the
+     `ideal_candidate_text` value from `config/jd_requirements.yaml` but fully
+     editable by the user. When the text is edited, re-embed the edited JD text
+     live (reuse the same embedding call used for the default JD) and rank
+     candidates against whichever JD text is currently in the box, not only the
+     static default.
+   - The candidate sample upload section (accepts a JSON/JSONL upload of ≤100
+     candidates, or falls back to the bundled `sandbox/sample_candidates.json`
+     if nothing is uploaded).
+   - The ranked-output table and CSV download button, with the LLM reasoning
+     mode available as a toggle.
+   Runs the full pipeline live (embeddings computed on the fly since N is small
+   — no precomputed artifacts needed here).
 10. Write `tests/test_rules.py` and `tests/test_pipeline_smoke.py`; run both.
 11. Write `README.md`: setup instructions, exact reproduce command
     (`python rank.py --candidates ./data/candidates.jsonl --out ./submission.csv`),
@@ -354,3 +371,7 @@ def generate_reasoning(candidate: dict, facts: dict, mode: str = "template") -> 
 Do not ask me clarifying questions about the JD interpretation — section 4 is the
 authoritative distillation. Do ask if `data/candidates.jsonl` is missing or
 doesn't match the schema in `data/candidate_schema.json`.
+
+Update the existing code in this repository with these changes for the current
+prompt — do not regenerate or rebuild files or components that don't need to
+change.
