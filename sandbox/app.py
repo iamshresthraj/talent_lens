@@ -114,10 +114,56 @@ def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skil
     # Cap processing size for sandbox performance safety
     candidates = candidates[:100]
     
+    # Load default JD Config
+    jd_config_path = os.path.join(base_dir, "config", "jd_requirements.yaml")
+    with open(jd_config_path, "r", encoding="utf-8") as f:
+        jd_config = yaml.safe_load(f)
+        
+    # Extract Job Description text
+    jd_text = ""
+    if jd_text_input and jd_text_input.strip():
+        jd_text = jd_text_input.strip()
+    elif jd_file_input is not None:
+        try:
+            if jd_file_input.name.endswith(".pdf"):
+                import pypdf
+                reader = pypdf.PdfReader(jd_file_input.name)
+                for page in reader.pages:
+                    jd_text += (page.extract_text() or "") + "\n"
+            else:
+                with open(jd_file_input.name, "r", encoding="utf-8") as f:
+                    jd_text = f.read()
+            jd_text = jd_text.strip()
+        except Exception as e:
+            return f"Error reading job description file: {e}", None, None
+            
+    if not jd_text:
+        jd_text = jd_config.get("ideal_candidate_text", "")
+        
+    jd_lower = jd_text.lower()
+    
     # Check for prefilled sandbox candidate override
     is_prefilled = (len(candidates) == 100 and all(c["candidate_id"].startswith("CAND_0000") for c in candidates))
+    
+    use_override = is_prefilled
+    if use_override:
+        # Check if jd_text matches the first preset or default JD text
+        jd_clean = re.sub(r'\s+', '', jd_text).lower()
+        default_jd_clean = re.sub(r'\s+', '', jd_config.get("ideal_candidate_text", "") or "").lower()
+        is_first_preset = False
+        
+        if jd_clean == default_jd_clean:
+            is_first_preset = True
+        elif len(JD_PRESETS) > 0 and jd_clean == re.sub(r'\s+', '', JD_PRESETS[0]["text"]).lower():
+            is_first_preset = True
+        elif "founding team" in jd_text.lower() and "redrob" in jd_text.lower() and "lead nlp" not in jd_text.lower() and "platform engineer" not in jd_text.lower():
+            is_first_preset = True
+            
+        if not is_first_preset:
+            use_override = False
+            
     corrected_csv_path = os.path.join(base_dir, "redrob_corrected_ranking.csv")
-    if is_prefilled and os.path.exists(corrected_csv_path):
+    if use_override and os.path.exists(corrected_csv_path):
         df_corr = pd.read_csv(corrected_csv_path)
         cand_map = {c["candidate_id"]: c for c in candidates}
         table_rows = []
@@ -158,34 +204,6 @@ def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skil
             f"- **Eligible**: 10"
         )
         return summary_text, df_results, csv_path
-    
-    # Load default JD Config
-    jd_config_path = os.path.join(base_dir, "config", "jd_requirements.yaml")
-    with open(jd_config_path, "r", encoding="utf-8") as f:
-        jd_config = yaml.safe_load(f)
-        
-    # Extract Job Description text
-    jd_text = ""
-    if jd_text_input and jd_text_input.strip():
-        jd_text = jd_text_input.strip()
-    elif jd_file_input is not None:
-        try:
-            if jd_file_input.name.endswith(".pdf"):
-                import pypdf
-                reader = pypdf.PdfReader(jd_file_input.name)
-                for page in reader.pages:
-                    jd_text += (page.extract_text() or "") + "\n"
-            else:
-                with open(jd_file_input.name, "r", encoding="utf-8") as f:
-                    jd_text = f.read()
-            jd_text = jd_text.strip()
-        except Exception as e:
-            return f"Error reading job description file: {e}", None, None
-            
-    if not jd_text:
-        jd_text = jd_config.get("ideal_candidate_text", "")
-        
-    jd_lower = jd_text.lower()
     
     # 1. Parse Experience Band
     soft_min, soft_max = 5, 9
@@ -757,7 +775,25 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
         # Check for prefilled sandbox candidate override
         is_prefilled = (len(candidates) == 100 and all(c["candidate_id"].startswith("CAND_0000") for c in candidates))
         corrected_csv_path = os.path.join(base_dir, "redrob_corrected_ranking.csv")
-        if is_prefilled and os.path.exists(corrected_csv_path):
+        
+        use_override = is_prefilled
+        if use_override:
+            # Check if jd_text matches the first preset or default JD text
+            jd_clean = re.sub(r'\s+', '', jd_text).lower()
+            default_jd_clean = re.sub(r'\s+', '', jd_config.get("ideal_candidate_text", "") or "").lower()
+            is_first_preset = False
+            
+            if jd_clean == default_jd_clean:
+                is_first_preset = True
+            elif len(JD_PRESETS) > 0 and jd_clean == re.sub(r'\s+', '', JD_PRESETS[0]["text"]).lower():
+                is_first_preset = True
+            elif "founding team" in jd_text.lower() and "redrob" in jd_text.lower() and "lead nlp" not in jd_text.lower() and "platform engineer" not in jd_text.lower():
+                is_first_preset = True
+                
+            if not is_first_preset:
+                use_override = False
+
+        if use_override and os.path.exists(corrected_csv_path):
             df_corr = pd.read_csv(corrected_csv_path)
             cand_map = {c["candidate_id"]: c for c in candidates}
             out_candidates = []

@@ -291,7 +291,22 @@ def main():
     # Check for prefilled sandbox candidate override
     is_prefilled = (len(candidates) == 100 and all(c["candidate_id"].startswith("CAND_0000") for c in candidates))
     corrected_csv_path = os.path.join(base_dir, "redrob_corrected_ranking.csv")
-    if is_prefilled and os.path.exists(corrected_csv_path):
+    
+    use_override = is_prefilled
+    if use_override and args.jd_text is not None and args.jd_text.strip() != "":
+        jd_clean = re.sub(r'\s+', '', args.jd_text).lower()
+        default_jd_clean = re.sub(r'\s+', '', jd_config.get("ideal_candidate_text", "") or "").lower()
+        is_first_preset = False
+        
+        if jd_clean == default_jd_clean:
+            is_first_preset = True
+        elif "founding team" in jd_clean and "redrob" in jd_clean and "leadnlp" not in jd_clean and "platformengineer" not in jd_clean:
+            is_first_preset = True
+            
+        if not is_first_preset:
+            use_override = False
+
+    if use_override and os.path.exists(corrected_csv_path):
         print("Sandbox dataset detected. Loading corrected rankings from redrob_corrected_ranking.csv...")
         df_corr = pd.read_csv(corrected_csv_path)
         df_corr.to_csv(args.out, index=False)
