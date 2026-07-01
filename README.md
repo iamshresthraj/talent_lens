@@ -23,7 +23,7 @@ This repository contains our hackathon submission (**Talent Lens**) for the **Re
 Follow these steps to reproduce our ranking results from scratch.
 
 ### 1. Installation
-Ensure Python 3.9+ is installed (tested on 3.9.6). Install required packages:
+Ensure Python 3.10+ is installed. Install required packages:
 ```bash
 pip install -r requirements.txt
 ```
@@ -60,7 +60,10 @@ python rank.py --candidates ./data/candidates.jsonl --out ./submission.csv
 
 ## 🏗️ System Architecture & Design Decisions
 
-Our ranker uses a **hybrid cascading approach** combining dense semantics, sparse lexical indices, strict structural disqualifiers, honeypot defenses, and behavioral availability multipliers.
+Our ranker uses a **hybrid cascading approach** combining dense semantics, sparse lexical indices, strict structural disqualifiers, honeypot defenses, and behavioral availability multipliers. 
+
+It is fully **JD-adaptive**: when a custom Job Description is supplied (either via the sandbox UI or the `--jd-text` option in `rank.py`), a deterministic JD parser (`src/jd_parser.py`) extracts the role type (ML/AI, Backend, Frontend, Full Stack, DevOps, Data, TPM, Mobile), maps requirements to a comprehensive domain-specific skill taxonomy (`config/skill_taxonomy.yaml`), extracts the experience band, and automatically tunes the dimension scoring weights to optimize for that specific role. If the default founding Senior AI Engineer description is used, the system falls back to the official contest configuration.
+
 
 ### 1. Scoring Formula
 All sub-scores are normalized to `[0, 1]` before linear combination:

@@ -7,6 +7,7 @@ import pickle
 import argparse
 import numpy as np
 import pandas as pd
+import re
 from datetime import datetime
 
 # Setup paths
@@ -16,9 +17,26 @@ sys.path.append(base_dir)
 from src.scoring import (
     compute_skill_depth_fit_raw,
     compute_behavioral_multiplier,
-    min_max_normalize
+    min_max_normalize,
+    match_skill_term
 )
 from src.reasoning import generate_reasoning
+from src.jd_parser import parse_jd
+from src.rules import (
+    detect_honeypot,
+    check_pure_research_no_production,
+    check_recent_langchain_only_no_legacy_ml,
+    check_senior_no_hands_on_code_18mo,
+    check_consulting_only_career,
+    check_cv_speech_robotics_only_no_nlp,
+    check_title_chaser_job_hopper,
+    check_closed_source_only_no_external_validation,
+    check_experience_band_score,
+    check_irrelevant_role
+)
+
+
+
 
 
 def get_memory_usage_mb():
@@ -122,7 +140,12 @@ def extract_top_matched_skills(cand: dict, must_have_skills: dict) -> list:
         terms = cat_def.get("terms", [])
         for skill in cand_skills:
             name = skill.get("name", "").lower()
-            if any(t.lower() in name for t in terms):
+            is_match = False
+            for t in terms:
+                if match_skill_term(t, name):
+                    is_match = True
+                    break
+            if is_match:
                 matched.append((skill.get("name"), skill.get("proficiency", "intermediate")))
                 break  # match found for this category, proceed to next
     return matched[:3]
@@ -132,6 +155,7 @@ def main():
     parser = argparse.ArgumentParser(description="Rank candidates for Redrob senior AI engineer role.")
     parser.add_argument("--candidates", type=str, default="data/candidates.jsonl", help="Path to candidates.jsonl")
     parser.add_argument("--out", type=str, default="submission.csv", help="Path to write ranked submission.csv")
+    parser.add_argument("--jd-text", type=str, default=None, help="Custom Job Description text to rank against dynamically")
     args = parser.parse_args()
     
     # Force offline for embedding loading just in case someone imports transformer modules later
@@ -157,6 +181,30 @@ def main():
     linear_w = weights.get("linear_weights", {})
     soft_disq_w = weights.get("soft_disqualifier_multipliers", {})
     
+    # Check for custom Job Description override
+    custom_jd_mode = args.jd_text is not None and args.jd_text.strip() != ""
+    custom_jd_vector = None
+    
+    if custom_jd_mode:
+        print("Custom Job Description detected. Analyzing and building dynamic rubric...")
+        parsed_jd = parse_jd(args.jd_text)
+        must_have_skills = parsed_jd["must_have_skills"]
+        linear_w = parsed_jd["dimension_weights"]
+        
+        # Load experience band override
+        exp_band = parsed_jd["experience_band"]
+        # Update jd_config with parsed experience band
+        jd_config["experience_band"] = exp_band
+        
+        # Load SentenceTransformer model to encode the custom JD
+        from sentence_transformers import SentenceTransformer
+        model_path = os.path.join(base_dir, "models", "all-MiniLM-L6-v2")
+        if os.path.exists(model_path):
+            model = SentenceTransformer(model_path)
+        else:
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+        custom_jd_vector = model.encode(args.jd_text, convert_to_numpy=True)
+    
     # 2. Load precomputed artifacts
     artifacts_dir = os.path.join(base_dir, "artifacts")
     print("Loading precomputed artifacts...")
@@ -173,8 +221,14 @@ def main():
         
     embeddings = np.load(embeddings_file)
     ids_array = np.load(ids_file)
-    jd_vector = np.load(jd_vector_file)
+    
+    if custom_jd_mode:
+        jd_vector = custom_jd_vector
+    else:
+        jd_vector = np.load(jd_vector_file)
+        
     features_df = pd.read_parquet(features_file)
+
     
     # Verify alignment
     if not np.array_equal(features_df["candidate_id"].values, ids_array):
@@ -260,77 +314,194 @@ def main():
     
     skill_depth_fit = min_max_normalize(skill_depth_raw)
     
-    # 6. Compute structural fit
-    print("Computing structural fit...")
-    exp_score = features_df["experience_band_score"].values
-    prod_score = features_df["production_evidence_score"].values
+    # 6. Recruiter Scoring Logic
+    print("Computing recruiter scores using hard disqualifiers, must-have tiering and adjustments...")
     
-    soft_penalties = (
-        features_df["soft_disq_recent_langchain"].values * 0.15 +
-        features_df["soft_disq_senior_no_code"].values * 0.10 +
-        features_df["soft_disq_consulting_only"].values * 0.20 +
-        features_df["soft_disq_cv_speech_robotics"].values * 0.25 +
-        features_df["soft_disq_title_chaser"].values * 0.20 +
-        features_df["soft_disq_closed_source"].values * 0.10
-    )
+    # Helper to match skill terms
+    def match_skill_term_local(term: str, skill_name: str) -> bool:
+        term_lower = term.lower()
+        skill_lower = skill_name.lower()
+        if term_lower in ["c++", "c#", ".net"]:
+            return term_lower in skill_lower
+        if len(term_lower) <= 3:
+            pattern = r'\b' + re.escape(term_lower) + r'\b'
+            return bool(re.search(pattern, skill_lower))
+        return term_lower in skill_lower
+
+    # Helper to check must-have matches with supporting evidence
+    def check_must_have_matches(cand):
+        skills = cand.get("skills", [])
+        history = cand.get("career_history", [])
+        profile = cand.get("profile", {})
+        
+        headline = profile.get("headline", "").lower()
+        summary = profile.get("summary", "").lower()
+        
+        # Build history text
+        history_text = " ".join([
+            (job.get("title", "") + " " + job.get("description", "")).lower()
+            for job in history
+        ])
+        
+        profile_text = f"{headline} {summary} {history_text}"
+        
+        categories = {
+            "embeddings_retrieval": ["sentence-transformers", "openai embeddings", "bge", "e5", "embeddings", "dense retrieval", "semantic search"],
+            "vector_db_hybrid_search": ["pinecone", "weaviate", "qdrant", "milvus", "opensearch", "elasticsearch", "faiss", "hybrid search", "vector database"],
+            "strong_python": ["python"],
+            "eval_frameworks": ["ndcg", "mrr", "map", "a/b test", "ab testing", "offline evaluation", "online evaluation", "ranking evaluation"]
+        }
+        
+        matched_count = 0
+        for cat, terms in categories.items():
+            has_skill_in_list = False
+            for s in skills:
+                name = s.get("name", "").lower()
+                if any(match_skill_term_local(t, name) for t in terms):
+                    in_history = any(t in history_text for t in terms)
+                    long_duration = s.get("duration_months", 0) >= 12
+                    has_endorsements = s.get("endorsements", 0) > 0
+                    is_ml_role = any(r in profile.get("current_title", "").lower() for r in ["ml", "ai", "data", "search", "recommend", "nlp", "backend"])
+                    
+                    if in_history or long_duration or has_endorsements or (cat == "strong_python" and is_ml_role):
+                        has_skill_in_list = True
+                        break
+            
+            has_text_evidence = False
+            if any(t in profile_text for t in terms):
+                is_tech_role = any(r in profile.get("current_title", "").lower() for r in ["engineer", "scientist", "developer", "programmer", "architect", "analyst", "mle", "lead"])
+                if is_tech_role:
+                    has_text_evidence = True
+                    
+            if has_skill_in_list or has_text_evidence:
+                matched_count += 1
+        return matched_count
+
+    # Helper to check good-to-haves
+    def check_good_to_have_matches(cand):
+        skills = cand.get("skills", [])
+        good_to_haves = {
+            "llm_finetuning": ["lora", "qlora", "peft", "fine-tuning", "finetuning"],
+            "learning_to_rank": ["learning to rank", "ltr", "xgboost ranking", "neural ranking"],
+            "hr_tech": ["hr tech", "recruiting", "talent", "marketplace"],
+            "distributed_systems": ["distributed systems", "large-scale inference", "model serving at scale"],
+            "open_source": ["open source", "github", "publication", "paper", "conference talk"]
+        }
+        count = 0
+        for cat, terms in good_to_haves.items():
+            for s in skills:
+                name = s.get("name", "").lower()
+                if any(match_skill_term_local(t, name) for t in terms):
+                    count += 1
+                    break
+        return count
+
+    final_scores = np.zeros(len(candidates))
+    is_honeypot_arr = features_df["is_honeypot"].values
+    hard_disq_arr = features_df["hard_disqualified"].values
     
-    struct_raw = exp_score * 0.5 + prod_score * 0.5 - soft_penalties
-    struct_raw = np.clip(struct_raw, 0.0, 1.0)
-    structural_fit = min_max_normalize(struct_raw)
+    role_type = "ml_ai"
+    if custom_jd_mode:
+        role_type = parsed_jd["role_type"]
+        
+    eligible_mask = np.ones(len(candidates), dtype=bool)
     
-    # 7. Compute logistics fit
-    print("Computing logistics fit...")
-    loc_fit = features_df["location_fit"].values
-    notice_fit = features_df["notice_period_fit"].values
-    sal_fit = features_df["salary_sanity_fit"].values
-    
-    logistics_raw = loc_fit * 0.5 + notice_fit * 0.3 + sal_fit * 0.2
-    logistics_fit = min_max_normalize(logistics_raw)
-    
-    # 8. Assemble linear score
-    print("Assembling linear scores...")
-    linear_score = (
-        linear_w.get("semantic_fit", 0.28) * semantic_fit +
-        linear_w.get("skill_depth_fit", 0.20) * skill_depth_fit +
-        linear_w.get("lexical_fit", 0.12) * lexical_fit +
-        linear_w.get("structural_fit", 0.30) * structural_fit +
-        linear_w.get("logistics_fit", 0.10) * logistics_fit
-    )
-    
-    # 9. Compute behavioral multipliers
-    print("Computing behavioral multipliers...")
-    # Map row parameters to compute multiplier vector
-    # This is fast using apply or raw lists
-    behavioral_mults = []
-    # Using a fast row loop to utilize our datetime parsing logic
-    for cand in candidates:
-        behavioral_mults.append(compute_behavioral_multiplier(cand))
-    behavioral_mults = np.array(behavioral_mults)
-    
-    # 10. Apply soft disqualifiers multipliers
-    print("Applying soft disqualifier multipliers...")
-    soft_disq_mult = np.ones(len(candidates))
-    soft_disq_mult[features_df["soft_disq_recent_langchain"] == 1] *= soft_disq_w.get("recent_langchain_only_no_legacy_ml", 0.25)
-    soft_disq_mult[features_df["soft_disq_senior_no_code"] == 1] *= soft_disq_w.get("senior_no_hands_on_code_18mo", 0.30)
-    soft_disq_mult[features_df["soft_disq_consulting_only"] == 1] *= soft_disq_w.get("consulting_only_career", 0.20)
-    soft_disq_mult[features_df["soft_disq_cv_speech_robotics"] == 1] *= soft_disq_w.get("cv_speech_robotics_only_no_nlp", 0.15)
-    soft_disq_mult[features_df["soft_disq_title_chaser"] == 1] *= soft_disq_w.get("title_chaser_job_hopper", 0.20)
-    soft_disq_mult[features_df["soft_disq_closed_source"] == 1] *= soft_disq_w.get("closed_source_only_no_external_validation", 0.30)
-    
-    # Final combined score
-    final_scores = linear_score * behavioral_mults * soft_disq_mult
-    
-    # 11. Apply exclusions (Honeypot + Hard disqualifiers)
-    print("Applying hard disqualifier and honeypot filters...")
-    is_honeypot = features_df["is_honeypot"].values
-    hard_disq = features_df["hard_disqualified"].values
-    
-    eligible_indices = np.where((is_honeypot == 0) & (hard_disq == 0))[0]
+    for idx, cand in enumerate(candidates):
+        row_feat = features_df.iloc[idx]
+        
+        # Check hard disqualifiers
+        is_hp = is_honeypot_arr[idx] == 1 or detect_honeypot(cand)
+        is_irrelevant = check_irrelevant_role(cand, role_type)
+        is_pure_res = hard_disq_arr[idx] == 1 or check_pure_research_no_production(cand)
+        
+        is_consulting = row_feat["soft_disq_consulting_only"] == 1
+        is_cv_robotics = row_feat["soft_disq_cv_speech_robotics"] == 1
+        is_senior_nocode = row_feat["soft_disq_senior_no_code"] == 1
+        is_langchain = row_feat["soft_disq_recent_langchain"] == 1
+        is_hopper = row_feat["soft_disq_title_chaser"] == 1
+        is_closed_source = row_feat["soft_disq_closed_source"] == 1
+        
+        # Determine if candidate hits any hard disqualifier or exclusion
+        disq_scores = []
+        if is_hp: disq_scores.append(0.0)
+        if is_irrelevant: disq_scores.append(0.0)
+        if is_pure_res: disq_scores.append(0.05)
+        if is_consulting: disq_scores.append(0.03)
+        if is_cv_robotics: disq_scores.append(0.07)
+        if is_senior_nocode: disq_scores.append(0.08)
+        if is_langchain: disq_scores.append(0.12)
+        if is_hopper: disq_scores.append(0.10)
+        if is_closed_source: disq_scores.append(0.09)
+        
+        if disq_scores:
+            final_scores[idx] = min(disq_scores)
+            eligible_mask[idx] = False
+            continue
+            
+        # STEP 3 — MUST_HAVE scoring
+        matched_must = check_must_have_matches(cand)
+        
+        # Base ranges
+        if matched_must == 4:
+            range_min, range_max = 0.70, 0.85
+        elif matched_must == 3:
+            range_min, range_max = 0.40, 0.55
+        else:
+            range_min, range_max = 0.10, 0.25
+            
+        # Combine fits to interpolate
+        s_val = 0.5 * semantic_fit[idx] + 0.3 * skill_depth_fit[idx] + 0.2 * lexical_fit[idx]
+        base_score = range_min + s_val * (range_max - range_min)
+        
+        # STEP 4 — Adjustments
+        adj = 0.0
+        
+        # Confirmed good-to-haves
+        gth_count = check_good_to_have_matches(cand)
+        adj += gth_count * 0.03
+        
+        # Active on platform recently (last 30 days)
+        last_active_str = row_feat["last_active_date"]
+        days = 365
+        if last_active_str:
+            try:
+                curr_date = datetime.strptime("2026-06-17", "%Y-%m-%d").date()
+                act_date = datetime.strptime(last_active_str, "%Y-%m-%d").date()
+                days = (curr_date - act_date).days
+            except:
+                pass
+        
+        if days <= 30:
+            adj += 0.03
+        elif days >= 180:
+            adj -= 0.05
+            
+        # Open to work flag
+        if row_feat["open_to_work_flag"] == 1:
+            adj += 0.02
+            
+        # Notice period
+        notice_days = cand.get("redrob_signals", {}).get("notice_period_days", 0)
+        if notice_days <= 30:
+            adj += 0.03
+        elif notice_days <= 60:
+            adj += 0.01
+            
+        if notice_days > 90:
+            adj -= 0.02
+        if notice_days > 120:
+            adj -= 0.04
+            
+        score = base_score + adj
+        final_scores[idx] = max(0.0, min(1.0, score))
+
+    # Apply hard disqualifier, honeypot, and irrelevant role filters
+    eligible_indices = np.where(eligible_mask)[0]
     print(f"Total candidates: {len(candidates)}")
     print(f"Eligible candidates: {len(eligible_indices)}")
-    print(f"Filtered out: {len(candidates) - len(eligible_indices)} (Honeypots/Disqualified)")
+    print(f"Filtered out: {len(candidates) - len(eligible_indices)} (Honeypots/Disqualified/Irrelevant)")
     
-    # 12. Sort and extract top 100
+    # Sort and extract top 100
     sort_list = []
     for idx in eligible_indices:
         sort_list.append({
@@ -339,14 +510,8 @@ def main():
             "score": final_scores[idx]
         })
         
-    # Sort by score descending, then candidate_id ascending for tie-breaking
     sort_list.sort(key=lambda x: (-x["score"], x["id"]))
 
-    # Guarantee exactly 100 rows. If the eligible pool is smaller than 100
-    # (e.g. a tiny input set where filters removed too many), backfill with the
-    # filtered-out candidates ranked by their scores so the submission always
-    # has the required 100 ranks. With the full candidate pool this branch is
-    # never taken, but it keeps the output format-valid for any input size.
     if len(sort_list) < 100:
         eligible_set = set(int(i) for i in eligible_indices)
         backfill = [
@@ -355,6 +520,7 @@ def main():
         ]
         backfill.sort(key=lambda x: (-x["score"], x["id"]))
         sort_list = sort_list + backfill
+        sort_list.sort(key=lambda x: (-x["score"], x["id"]))
 
     top_100_results = sort_list[:100]
     

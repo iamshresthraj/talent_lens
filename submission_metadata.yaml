@@ -1,3 +1,4 @@
+# ⚠️  FILL ALL 'TODO' FIELDS BELOW BEFORE SUBMITTING TO THE PORTAL  ⚠️
 participant_name: "Talent Lens"
 team_name: "Talent Lens"
 
@@ -40,9 +41,9 @@ ai_usage_summary: >
   Confirm here that NO candidate data was sent to any hosted LLM API at any point.
 
 compute:
-  platform: "MacBook (Apple Silicon, arm64)"
-  os: "macOS 26.5 (arm64)"
-  python_version: "3.9.6"
+  platform: "Windows (x86_64)"  # Update to match your actual machine
+  os: "Windows 11 (x86_64)"     # Update to match your actual OS
+  python_version: "3.13"
   cpu_cores: 10
   ram_gb: 16
   uses_gpu_for_inference: false

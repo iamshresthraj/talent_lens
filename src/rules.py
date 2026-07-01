@@ -409,3 +409,51 @@ def check_production_evidence_score(candidate: dict) -> float:
     else:
         return 0.5
 
+
+def check_irrelevant_role(candidate: dict, role_type: str) -> bool:
+    """
+    Returns True if the candidate's profile is completely irrelevant to the target role type.
+    For example, a Mechanical Engineer or HR Manager applying for a Backend Engineer role.
+    """
+    profile = candidate.get("profile", {})
+    title = str(profile.get("current_title", "")).lower()
+    headline = str(profile.get("headline", "")).lower()
+    
+    # Non-technical roles are always irrelevant to engineering roles
+    non_tech_keywords = [
+        "mechanical engineer", "civil engineer", "chemical engineer", "aerospace engineer",
+        "human resources", "recruiter", "talent acquisition", "hr generalist", "hr manager",
+        "sales executive", "sales manager", "account executive", "marketing manager", 
+        "seo specialist", "content writer", "copywriter", "graphic designer", 
+        "operations manager", "operations associate", "finance analyst", "accountant",
+        "qa tester", "manual tester", "qa engineer", "quality assurance", "test engineer",
+        "business analyst", "project coordinator", "project manager", "customer support",
+        "customer service", "technical support"
+    ]
+    
+    for kw in non_tech_keywords:
+        if kw in title or kw in headline:
+            return True
+            
+    # Product Manager is irrelevant for engineering roles
+    if role_type in ["backend", "frontend", "fullstack", "devops", "data_engineer", "ml_ai", "mobile"]:
+        if "product manager" in title or "product manager" in headline:
+            return True
+            
+    # Mismatches between technical roles
+    if role_type in ["backend", "devops", "data_engineer", "ml_ai"]:
+        frontend_keywords = ["frontend engineer", "frontend developer", "ui/ux developer", "ui/ux designer", "web designer"]
+        for kw in frontend_keywords:
+            if kw in title or kw in headline:
+                return True
+                
+    if role_type == "frontend":
+        backend_keywords = ["backend engineer", "backend developer", "devops engineer", "sre", "infrastructure engineer", "data engineer"]
+        for kw in backend_keywords:
+            if kw in title or kw in headline:
+                return True
+                
+    return False
+
+
+

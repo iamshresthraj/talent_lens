@@ -1,6 +1,23 @@
 import math
+import re
 import numpy as np
 from datetime import datetime
+
+def match_skill_term(term: str, skill_name: str) -> bool:
+    term_lower = term.lower()
+    skill_lower = skill_name.lower()
+    
+    # Handle specific short terms with special characters
+    if term_lower in ["c++", "c#", ".net"]:
+        return term_lower in skill_lower
+        
+    # If the term is very short, require word boundary match to avoid false positives
+    # (e.g. 'go' matching 'django', 'mongodb')
+    if len(term_lower) <= 3:
+        pattern = r'\b' + re.escape(term_lower) + r'\b'
+        return bool(re.search(pattern, skill_lower))
+        
+    return term_lower in skill_lower
 
 def compute_skill_depth_fit_raw(candidate: dict, must_have_skills: dict) -> float:
     """
@@ -31,10 +48,10 @@ def compute_skill_depth_fit_raw(candidate: dict, must_have_skills: dict) -> floa
         for cand_skill in cand_skills:
             cand_skill_name = cand_skill.get("name", "").lower()
             
-            # Substring match against terms
+            # Word-boundary safe match against terms
             is_match = False
             for term in terms:
-                if term.lower() in cand_skill_name:
+                if match_skill_term(term, cand_skill_name):
                     is_match = True
                     break
                     

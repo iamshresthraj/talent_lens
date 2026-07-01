@@ -58,7 +58,7 @@ def generate_reasoning(candidate: dict, facts: dict, mode: str = "template") -> 
                 "<|im_start|>system\n"
                 "You are an AI recruitment assistant. Write exactly 1-2 sentences explaining why this candidate fits the role. "
                 "Use ONLY the facts listed below. Do not invent any skills, companies, or numbers. "
-                "If a concern is listed, mention it honestly. Keep it professional and concise.\n"
+                "If there is a point to review, mention it honestly. Keep it professional and concise.\n"
                 "<|im_end|>\n"
                 "<|im_start|>user\n"
                 f"Candidate: {name}\n"
@@ -66,7 +66,7 @@ def generate_reasoning(candidate: dict, facts: dict, mode: str = "template") -> 
                 f"Current Title: {title} at {company}\n"
                 f"Top Skills: {skills_str}\n"
                 f"Platform Recency: {recency}\n"
-                f"Concern: {concern if concern else 'None'}\n"
+                f"Point to review: {concern if concern else 'None'}\n"
                 "<|im_end|>\n"
                 "<|im_start|>assistant\n"
             )
@@ -97,8 +97,8 @@ def generate_reasoning(candidate: dict, facts: dict, mode: str = "template") -> 
     
     if concern:
         templates_outro = [
-            f"They are {recency}, though we should note a potential concern: {concern}.",
-            f"They are {recency}, but there is a concern regarding {concern}.",
+            f"They are {recency}, though we should note a potential point to review: {concern}.",
+            f"They are {recency}, and we should review the detail: {concern}.",
             f"They are {recency}, but {concern} is a key point to evaluate.",
             f"They are {recency}, although we need to verify {concern} during screening."
         ]

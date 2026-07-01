@@ -1,0 +1,144 @@
+ml_ai:
+  embeddings_retrieval:
+    weight: 1.0
+    terms: ["sentence-transformers", "openai embeddings", "bge", "e5", "embeddings", "dense retrieval", "semantic search", "information retrieval"]
+  vector_db:
+    weight: 1.0
+    terms: ["pinecone", "weaviate", "qdrant", "milvus", "opensearch", "elasticsearch", "faiss", "hybrid search", "vector database"]
+  python:
+    weight: 0.6
+    terms: ["python"]
+  eval_frameworks:
+    weight: 0.9
+    terms: ["ndcg", "mrr", "map", "a/b test", "ab testing", "offline evaluation", "online evaluation", "ranking evaluation"]
+  llm_finetuning:
+    weight: 0.4
+    terms: ["lora", "qlora", "peft", "fine-tuning", "parameter-efficient", "rlhf", "dpo", "sft"]
+  learning_to_rank:
+    weight: 0.4
+    terms: ["learning to rank", "ltr", "xgboost ranking", "neural ranking", "ranknet", "lambdamart"]
+  deep_learning:
+    weight: 0.5
+    terms: ["pytorch", "tensorflow", "keras", "deep learning", "transformers", "bert", "gpt", "cnn", "rnn"]
+  classical_ml:
+    weight: 0.5
+    terms: ["scikit-learn", "sklearn", "xgboost", "random forest", "svm", "regression", "classification", "clustering"]
+
+backend:
+  languages:
+    weight: 1.0
+    terms: ["python", "go", "golang", "java", "c#", ".net", "ruby", "node.js", "javascript"]
+  sql:
+    weight: 0.9
+    terms: ["sql", "postgresql", "mysql", "query optimization", "explain analyze", "schema design", "database migrations"]
+  message_queue:
+    weight: 0.8
+    terms: ["kafka", "rabbitmq", "celery", "sqs", "pub/sub", "redis streams", "message broker"]
+  rest_api:
+    weight: 0.8
+    terms: ["rest", "grpc", "graphql", "api design", "idempotency", "versioning", "pagination", "endpoints"]
+  observability:
+    weight: 0.6
+    terms: ["observability", "logging", "metrics", "tracing", "prometheus", "grafana", "elk", "datadog", "sentry"]
+
+frontend:
+  react:
+    weight: 1.0
+    terms: ["react", "react.js", "reactjs", "next.js", "nextjs", "vue", "angular"]
+  typescript:
+    weight: 0.9
+    terms: ["typescript", "ts", "javascript", "js"]
+  css:
+    weight: 0.8
+    terms: ["css", "scss", "sass", "tailwind", "responsive design", "layout models", "flexbox", "css grid"]
+  state_management:
+    weight: 0.7
+    terms: ["state management", "redux", "context api", "zustand", "mobx", "recoil"]
+  performance:
+    weight: 0.6
+    terms: ["performance", "bundle size", "memoization", "re-renders", "lighthouse", "profiling", "devtools"]
+
+fullstack:
+  backend_languages:
+    weight: 1.0
+    terms: ["python", "node.js", "go", "golang", "ruby", "java", "php"]
+  frontend_react:
+    weight: 1.0
+    terms: ["react", "react.js", "typescript", "javascript", "html", "css"]
+  sql:
+    weight: 0.8
+    terms: ["sql", "postgresql", "mysql", "indexing", "schema design"]
+  web_fundamentals:
+    weight: 0.7
+    terms: ["http", "auth", "jwt", "sessions", "oauth", "cors", "caching"]
+  testing:
+    weight: 0.6
+    terms: ["testing", "unit test", "integration test", "e2e test", "jest", "cypress", "playwright"]
+
+devops:
+  kubernetes:
+    weight: 1.0
+    terms: ["kubernetes", "k8s", "helm", "kustomize", "ingress", "hpa", "container orchestration"]
+  terraform:
+    weight: 1.0
+    terms: ["terraform", "pulumi", "infrastructure as code", "iac"]
+  cloud_platforms:
+    weight: 0.9
+    terms: ["aws", "gcp", "azure", "cloud services", "iam", "s3", "ec2"]
+  observability:
+    weight: 0.8
+    terms: ["prometheus", "grafana", "elk", "datadog", "observability", "metrics", "alerting"]
+  scripting:
+    weight: 0.7
+    terms: ["bash", "shell", "python", "automation", "scripting"]
+
+data_engineer:
+  languages:
+    weight: 1.0
+    terms: ["python", "scala", "java", "sql"]
+  data_modeling:
+    weight: 0.9
+    terms: ["data modeling", "star schema", "snowflake schema", "slowly changing dimensions", "scd", "dbt"]
+  orchestration:
+    weight: 0.9
+    terms: ["airflow", "prefect", "dagster", "orchestration", "dag"]
+  warehouse:
+    weight: 0.9
+    terms: ["bigquery", "snowflake", "redshift", "databricks", "data warehouse"]
+  streaming:
+    weight: 0.6
+    terms: ["kafka", "flink", "spark", "streaming", "data lake"]
+
+tpm:
+  product_management:
+    weight: 1.0
+    terms: ["product roadmap", "roadmap", "product spec", "specs", "prd", "scoping", "product decisions"]
+  technical_background:
+    weight: 0.9
+    terms: ["software engineering", "technical architecture", "tradeoffs", "feasibility", "system design"]
+  data_literacy:
+    weight: 0.8
+    terms: ["metrics", "analytics", "query data", "sql", "correlation", "dashboards"]
+  stakeholder_management:
+    weight: 0.8
+    terms: ["stakeholder management", "collaboration", "negotiation", "scrum", "agile"]
+  ai_ml_products:
+    weight: 0.6
+    terms: ["ai products", "ml products", "model evaluation", "data pipelines", "inference latency"]
+
+mobile:
+  languages:
+    weight: 1.0
+    terms: ["swift", "kotlin", "java", "objective-c"]
+  native_platforms:
+    weight: 1.0
+    terms: ["ios", "android", "swiftui", "uikit", "jetpack compose", "react native", "flutter"]
+  app_delivery:
+    weight: 0.8
+    terms: ["app store", "google play", "release pipeline", "code signing", "testflight", "deployment"]
+  debugging:
+    weight: 0.8
+    terms: ["crash reporting", "symbolication", "anr", "instruments", "profiler", "memory management"]
+  mobile_patterns:
+    weight: 0.7
+    terms: ["deep links", "push notifications", "background tasks", "offline-first", "local storage", "sqlite"]

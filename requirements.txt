@@ -1,5 +1,5 @@
 # Core ranking pipeline — required by scripts/01-04 and rank.py.
-# Versions pinned to the exact set used to produce the submission (Python 3.9).
+# Versions pinned to the exact set used to produce the submission (Python 3.10+).
 numpy==2.0.2
 pandas==2.3.3
 scikit-learn==1.6.1
@@ -12,8 +12,9 @@ transformers==4.57.6
 torch==2.8.0
 
 # Sandbox demo app only (sandbox/app.py) — NOT needed for the reproduce command.
-gradio==4.44.1
+gradio>=4.36.0
 llama-cpp-python==0.3.2
 
 # Test suite only.
 pytest==8.3.4
+
