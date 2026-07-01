@@ -776,7 +776,7 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
                 category = "eligible"
                 if cid == "CAND_0000017":
                     category = "honeypot"
-                elif float(row["score"]) < 0.03:
+                elif int(row["rank"]) > 10:
                     category = "disqualified"
                 
                 out_candidates.append({
