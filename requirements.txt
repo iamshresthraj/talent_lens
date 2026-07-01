@@ -1,23 +1,20 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Core ranking pipeline — required by scripts/01-04 and rank.py.
-# Versions pinned to the exact set used to produce the submission (Python 3.10+).
-numpy==2.0.2
-pandas==2.3.3
-scikit-learn==1.6.1
-PyYAML==6.0.3
-pyarrow==21.0.0
-psutil==7.2.2
-huggingface_hub==0.36.2
-sentence-transformers==5.1.2
-transformers==4.57.6
+# Core ranking pipeline and Gradio sandbox dependencies
+numpy>=2.0.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+PyYAML>=6.0.0
+sentence-transformers>=2.2.0
+transformers>=4.30.0
 torch
 
-# Sandbox demo app only (sandbox/app.py) — NOT needed for the reproduce command.
+# Sandbox demo app only (sandbox/app.py)
 gradio>=4.36.0
 pypdf
-# llama-cpp-python==0.3.2  # Commented out to prevent HuggingFace build OOMKilled errors. Install manually for local LLM reasoning.
+# llama-cpp-python is commented out to prevent compilation/OOM issues on HF. 
+# It falls back to template mode automatically in reasoning.py.
 
-# Test suite only.
-pytest==8.3.4
+# Test suite only
+pytest>=8.0.0
 
