@@ -3,6 +3,7 @@ import sys
 import json
 import yaml
 import tempfile
+import re
 import pandas as pd
 import numpy as np
 import gradio as gr
@@ -65,7 +66,7 @@ def ensure_sample_candidates():
     return sample_path
 
 
-def run_sandbox_ranking(file_obj, semantic_w, skill_w, lexical_w, struct_w, logistics_w, reasoning_mode):
+def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skill_w, lexical_w, struct_w, logistics_w, reasoning_mode):
     # Load candidate lists
     if file_obj is None:
         sample_path = ensure_sample_candidates()
@@ -87,27 +88,98 @@ def run_sandbox_ranking(file_obj, semantic_w, skill_w, lexical_w, struct_w, logi
                         if line:
                             candidates.append(json.loads(line))
         except Exception as e:
-            return f"Error loading candidate file: {e}", None
+            return f"Error loading candidate file: {e}", None, None
             
     if not candidates:
-        return "No candidates found to process.", None
+        return "No candidates found to process.", None, None
         
     # Cap processing size for sandbox performance safety
     candidates = candidates[:100]
     
-    # Load JD Config
+    # Load default JD Config
     jd_config_path = os.path.join(base_dir, "config", "jd_requirements.yaml")
     with open(jd_config_path, "r", encoding="utf-8") as f:
         jd_config = yaml.safe_load(f)
         
-    must_have_skills = jd_config.get("must_have_skills", {})
+    # Extract Job Description text
+    jd_text = ""
+    if jd_text_input and jd_text_input.strip():
+        jd_text = jd_text_input.strip()
+    elif jd_file_input is not None:
+        try:
+            if jd_file_input.name.endswith(".pdf"):
+                import pypdf
+                reader = pypdf.PdfReader(jd_file_input.name)
+                for page in reader.pages:
+                    jd_text += (page.extract_text() or "") + "\n"
+            else:
+                with open(jd_file_input.name, "r", encoding="utf-8") as f:
+                    jd_text = f.read()
+            jd_text = jd_text.strip()
+        except Exception as e:
+            return f"Error reading job description file: {e}", None, None
+            
+    if not jd_text:
+        jd_text = jd_config.get("ideal_candidate_text", "")
+        
+    jd_lower = jd_text.lower()
+    
+    # 1. Parse Experience Band
+    soft_min, soft_max = 5, 9
+    match = re.search(r'(\d+)\s*(?:to|-)\s*(\d+)\s*years?', jd_lower)
+    if match:
+        soft_min = int(match.group(1))
+        soft_max = int(match.group(2))
+    else:
+        match_plus = re.search(r'(\d+)\s*\+\s*years?', jd_lower)
+        if match_plus:
+            soft_min = int(match_plus.group(1))
+            soft_max = soft_min + 4
+            
+    exp_band = {
+        "soft_min": soft_min,
+        "soft_max": soft_max,
+        "hard_floor": max(1, soft_min - 2),
+        "hard_ceiling": soft_max + 7
+    }
+    
+    # 2. Parse Locations
+    cities = ["pune", "noida", "hyderabad", "bangalore", "bengaluru", "mumbai", "delhi", "gurgaon", "gurugram", "ncr", "chennai"]
+    pref_locations = [c for c in cities if c in jd_lower]
+    if not pref_locations:
+        pref_locations = jd_config.get("preferred_locations", ["pune", "noida"])
+        
+    # 3. Parse Skills
+    common_skills = {
+        "python": ["python"],
+        "pytorch": ["pytorch"],
+        "tensorflow": ["tensorflow", "keras"],
+        "scikit-learn": ["scikit-learn", "sklearn"],
+        "xgboost": ["xgboost", "lightgbm"],
+        "pandas": ["pandas", "numpy"],
+        "sql": ["sql", "postgresql", "mysql"],
+        "elasticsearch": ["elasticsearch", "opensearch"],
+        "pinecone": ["pinecone", "weaviate", "qdrant", "milvus", "faiss"],
+        "embeddings": ["embeddings", "dense retrieval"],
+        "llm": ["llm", "langchain", "llama", "gpt", "openai"],
+        "nlp": ["nlp", "natural language", "bert", "transformers"]
+    }
+    
+    must_have_skills = {}
+    for skill_key, terms in common_skills.items():
+        if any(term in jd_lower for term in terms):
+            must_have_skills[skill_key] = {"weight": 1.0, "terms": terms}
+            
+    if not must_have_skills:
+        must_have_skills = jd_config.get("must_have_skills", {
+            "python": {"weight": 1.0, "terms": ["python"]}
+        })
+        
     consulting_firms = jd_config.get("consulting_firms", [])
-    pref_locations = jd_config.get("preferred_locations", [])
     pref_country = jd_config.get("preferred_country", "india")
-    exp_band = jd_config.get("experience_band", {})
     ideal_notice_days = jd_config.get("notice_period_ideal_days", 30)
     
-    # 1. Compute text docs and fit TF-IDF on the fly
+    # Compute text docs and fit TF-IDF on the fly
     from sklearn.feature_extraction.text import TfidfVectorizer
     texts = [build_candidate_doc(c) for c in candidates]
     
@@ -131,17 +203,16 @@ def run_sandbox_ranking(file_obj, semantic_w, skill_w, lexical_w, struct_w, logi
     lexical_raw = tfidf_matrix.dot(query_vec.T).toarray().ravel()
     lexical_fit = min_max_normalize(lexical_raw)
     
-    # 2. Compute embeddings on the fly
+    # Compute embeddings on the fly
     from sentence_transformers import SentenceTransformer
     model_path = os.path.join(base_dir, "models", "all-MiniLM-L6-v2")
     if os.path.exists(model_path):
         model = SentenceTransformer(model_path)
     else:
-        # Fallback to online download in case sandbox is deployed on HF Spaces directly
         model = SentenceTransformer("all-MiniLM-L6-v2")
         
     embeddings = model.encode(texts, convert_to_numpy=True)
-    jd_vector = model.encode(jd_config.get("ideal_candidate_text", ""), convert_to_numpy=True)
+    jd_vector = model.encode(jd_text, convert_to_numpy=True)
     
     # Cosine Similarity
     dot_products = np.dot(embeddings, jd_vector)
@@ -452,6 +523,18 @@ with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=
             )
             gr.Markdown("*Leave empty to use the bundled sample of 100 profiles from the dataset.*")
             
+            gr.Markdown("### Job Description")
+            jd_text_input = gr.Textbox(
+                label="Paste Job Description Text",
+                placeholder="Paste the Job Description text here...",
+                lines=5
+            )
+            jd_file_input = gr.File(
+                label="Or Upload Job Description (PDF or TXT)",
+                file_types=[".pdf", ".txt"],
+                type="filepath"
+            )
+            
             with gr.Accordion("Weight Calibration", open=False):
                 w_semantic = gr.Slider(0.0, 1.0, value=0.28, step=0.01, label="Semantic Vector Fit Weight")
                 w_skills = gr.Slider(0.0, 1.0, value=0.20, step=0.01, label="Skill Depth Weight")
@@ -482,10 +565,10 @@ with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=
             
     btn_run.click(
         fn=run_sandbox_ranking,
-        inputs=[file_input, w_semantic, w_skills, w_lexical, w_struct, w_logistics, reasoning_backend],
+        inputs=[file_input, jd_text_input, jd_file_input, w_semantic, w_skills, w_lexical, w_struct, w_logistics, reasoning_backend],
         outputs=[status_output, table_output, csv_output]
     )
 
 if __name__ == "__main__":
     ensure_sample_candidates()
-    demo.launch(server_name="127.0.0.1", server_port=7861)
+    demo.launch(server_name="127.0.0.1", server_port=7863)
