@@ -1,0 +1,52 @@
+ideal_candidate_text: >
+  Senior AI/ML engineer with 6 to 8 years of total experience, of which 4 to 5
+  years are in applied machine learning or AI roles at product companies (not
+  pure IT services). Has shipped at least one end-to-end ranking, search, or
+  recommendation system to real users at meaningful scale, with production
+  experience in embeddings-based retrieval (sentence-transformers, OpenAI
+  embeddings, BGE, or E5) and a vector database or hybrid search system
+  (Pinecone, Weaviate, Qdrant, Milvus, OpenSearch, Elasticsearch, or FAISS).
+  Strong Python engineer who has designed evaluation frameworks for ranking
+  systems including NDCG, MRR, MAP, and online A/B testing. Comfortable with
+  both deep ML systems work and scrappy product engineering. Has strong
+  informed opinions about hybrid versus dense retrieval, offline versus online
+  evaluation, and when to fine-tune versus prompt an LLM. Located in or willing
+  to relocate to Pune or Noida, India, or nearby Tier-1 cities.
+
+must_have_skills:        # name: weight (importance), matched against skills[].name (fuzzy) + descriptions
+  embeddings_retrieval: {weight: 1.0, terms: ["sentence-transformers", "openai embeddings", "bge", "e5", "embeddings", "dense retrieval", "semantic search"]}
+  vector_db_hybrid_search: {weight: 1.0, terms: ["pinecone", "weaviate", "qdrant", "milvus", "opensearch", "elasticsearch", "faiss", "hybrid search", "vector database"]}
+  strong_python: {weight: 0.6, terms: ["python"]}
+  eval_frameworks: {weight: 0.9, terms: ["ndcg", "mrr", "map", "a/b test", "ab testing", "offline evaluation", "online evaluation", "ranking evaluation"]}
+
+nice_to_have_skills:
+  llm_finetuning: {weight: 0.4, terms: ["lora", "qlora", "peft", "fine-tuning"]}
+  learning_to_rank: {weight: 0.4, terms: ["learning to rank", "ltr", "xgboost ranking", "neural ranking"]}
+  hr_tech: {weight: 0.2, terms: ["hr tech", "recruiting", "talent", "marketplace"]}
+  distributed_systems: {weight: 0.3, terms: ["distributed systems", "large-scale inference", "model serving at scale"]}
+  open_source: {weight: 0.3, terms: ["open source", "github", "publication", "paper", "conference talk"]}
+
+experience_band:
+  soft_min: 5
+  soft_max: 9
+  hard_floor: 3     # below this, structural penalty regardless of other signals
+  hard_ceiling: 16   # above this with no other red flags isn't penalized much, just not "ideal"
+
+hard_disqualifiers:     # -> excluded from top 100 entirely if triggered
+  - pure_research_no_production    # career_history shows only academic/research-lab titles/employers, no shipped/production language anywhere
+
+soft_disqualifiers:      # -> multiplicative penalty (~0.15-0.30x), not full exclusion
+  - recent_langchain_only_no_legacy_ml
+  - senior_no_hands_on_code_18mo
+  - consulting_only_career
+  - cv_speech_robotics_only_no_nlp
+  - title_chaser_job_hopper
+  - closed_source_only_no_external_validation
+
+consulting_firms: ["tcs", "infosys", "wipro", "accenture", "cognizant", "capgemini",
+                   "hcl", "tech mahindra", "ibm consulting", "deloitte", "mindtree"]
+
+preferred_locations: ["pune", "noida", "hyderabad", "mumbai", "delhi", "gurgaon", "gurugram", "ncr"]
+preferred_country: "india"
+
+notice_period_ideal_days: 30

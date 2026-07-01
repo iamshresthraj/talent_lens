@@ -1,0 +1,20 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+venv/
+ENV/
+
+# Project large data files and models
+data/
+models/
+artifacts/
+
+# Test artifacts
+tests/test_candidates_slice.jsonl
+tests/test_submission.csv
+.pytest_cache/

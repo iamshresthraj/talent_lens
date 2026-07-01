@@ -1,0 +1,12 @@
+sentence-transformers
+transformers
+pandas
+numpy
+scikit-learn
+pyyaml
+pyarrow
+fastparquet
+gradio
+llama-cpp-python
+pytest
+huggingface_hub

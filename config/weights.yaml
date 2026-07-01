@@ -1,0 +1,27 @@
+linear_weights:
+  semantic_fit: 0.28
+  skill_depth_fit: 0.20
+  lexical_fit: 0.12
+  structural_fit: 0.30
+  logistics_fit: 0.10
+
+soft_disqualifier_multipliers:
+  recent_langchain_only_no_legacy_ml: 0.25
+  senior_no_hands_on_code_18mo: 0.30
+  consulting_only_career: 0.20
+  cv_speech_robotics_only_no_nlp: 0.15
+  title_chaser_job_hopper: 0.20
+  closed_source_only_no_external_validation: 0.30
+
+behavioral_weights:
+  open_to_work_bonus: 0.05
+  recruiter_response_weight: 0.10
+  interview_completion_weight: 0.10
+  contact_verification_bonus: 0.02  # per verified signal (email, phone, linkedin) up to 0.06
+  github_activity_weight: 0.05       # bonus for active GitHub (>0 activity)
+  recency_decay_days: 180            # halflife/decay days scaling
+
+logistics_weights:
+  location_fit: 0.50
+  notice_period_fit: 0.30
+  salary_sanity_fit: 0.20
