@@ -341,7 +341,21 @@ def main():
         
     # Sort by score descending, then candidate_id ascending for tie-breaking
     sort_list.sort(key=lambda x: (-x["score"], x["id"]))
-    
+
+    # Guarantee exactly 100 rows. If the eligible pool is smaller than 100
+    # (e.g. a tiny input set where filters removed too many), backfill with the
+    # filtered-out candidates ranked by their scores so the submission always
+    # has the required 100 ranks. With the full candidate pool this branch is
+    # never taken, but it keeps the output format-valid for any input size.
+    if len(sort_list) < 100:
+        eligible_set = set(int(i) for i in eligible_indices)
+        backfill = [
+            {"idx": idx, "id": ids_array[idx], "score": final_scores[idx]}
+            for idx in range(len(candidates)) if idx not in eligible_set
+        ]
+        backfill.sort(key=lambda x: (-x["score"], x["id"]))
+        sort_list = sort_list + backfill
+
     top_100_results = sort_list[:100]
     
     # 13. Generate reasoning for top 100

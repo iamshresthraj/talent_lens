@@ -1625,8 +1625,11 @@
             alert("No CSV data available to download. Please run the ranking first.");
             return;
         }
+        // Prepend a UTF-8 BOM so the file is unambiguously exported as CSV (and opens
+        // correctly in Excel) rather than being sniffed as plain text/another format.
+        const BOM = "﻿";
         try {
-            const blob = new Blob([currentCsvData], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob([BOM + currentCsvData], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
@@ -1638,7 +1641,7 @@
         } catch (e) {
             console.warn("Blob URL download failed, trying data URI fallback...", e);
             try {
-                const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(currentCsvData);
+                const encodedUri = "data:text/csv;charset=utf-8," + encodeURIComponent(BOM + currentCsvData);
                 const link = document.createElement("a");
                 link.href = encodedUri;
                 link.download = "submission.csv";

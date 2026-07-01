@@ -116,8 +116,12 @@ def generate_reasoning(candidate: dict, facts: dict, mode: str = "template") -> 
     intro = templates_intro[idx_intro]
     outro = templates_outro[idx_outro]
     
-    # Clean internal periods from intro and outro to avoid triggering the sentence splitter
+    # The official validator counts sentences by splitting on . ! ? and rejects any
+    # reasoning with more than 2 segments. Interpolated entity names can contain dots
+    # (e.g. "Yellow.ai", "Node.js"), so we strip internal terminators from each clause
+    # and re-add a single terminator. This keeps every row at exactly 2 sentences and
+    # validator-safe; the only cost is that a dotted name renders without its dot.
     intro_clean = intro[:-1].replace(".", "").replace("!", "").replace("?", "") + "." if intro.endswith((".", "!", "?")) else intro.replace(".", "").replace("!", "").replace("?", "") + "."
     outro_clean = outro[:-1].replace(".", "").replace("!", "").replace("?", "") + "." if outro.endswith((".", "!", "?")) else outro.replace(".", "").replace("!", "").replace("?", "") + "."
-    
+
     return f"{intro_clean} {outro_clean}"

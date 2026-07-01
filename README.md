@@ -23,7 +23,7 @@ This repository contains our hackathon submission (**Talent Lens**) for the **Re
 Follow these steps to reproduce our ranking results from scratch.
 
 ### 1. Installation
-Ensure Python 3.10+ is installed. Install required packages:
+Ensure Python 3.9+ is installed (tested on 3.9.6). Install required packages:
 ```bash
 pip install -r requirements.txt
 ```

@@ -66,6 +66,20 @@ def ensure_sample_candidates():
     return sample_path
 
 
+def load_default_jd_text():
+    """Load the ideal_candidate_text from config to pre-fill the editable JD box."""
+    jd_config_path = os.path.join(base_dir, "config", "jd_requirements.yaml")
+    try:
+        with open(jd_config_path, "r", encoding="utf-8") as f:
+            jd_config = yaml.safe_load(f)
+        return (jd_config.get("ideal_candidate_text", "") or "").strip()
+    except Exception:
+        return ""
+
+
+DEFAULT_JD_TEXT = load_default_jd_text()
+
+
 def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skill_w, lexical_w, struct_w, logistics_w, reasoning_mode):
     # Load candidate lists
     if file_obj is None:
@@ -900,7 +914,18 @@ head_content = head_content.replace(
 )
 
 # Build Custom Gradio UI
-with gr.Blocks(title="Redrob AI Intelligent Candidate Ranker") as demo:
+# Note: in Gradio 4.x, `head` (custom <head> HTML/JS) and `css` are constructor
+# arguments on gr.Blocks, not on launch(). The SPA logic (incl. downloadCSV) lives
+# in head_content, so it must be injected here for the app to function.
+_APP_CSS = """
+    #gradio-bridge { display: none !important; }
+    gradio-app, .gradio-container, .main, .wrap, footer {
+        margin: 0 !important; padding: 0 !important;
+        max-height: 100vh !important; overflow: hidden !important;
+    }
+    footer, .footer, .built-with { display: none !important; }
+"""
+with gr.Blocks(title="Redrob AI Intelligent Candidate Ranker", head=head_content, css=_APP_CSS) as demo:
     # 1. Hidden inputs/outputs in a column styled as none
     with gr.Column(elem_id="gradio-bridge"):
         # Inputs
@@ -933,14 +958,5 @@ if __name__ == "__main__":
     ensure_sample_candidates()
     demo.launch(
         server_name="127.0.0.1",
-        server_port=7863,
-        head=head_content,
-        css="""
-            #gradio-bridge { display: none !important; }
-            gradio-app, .gradio-container, .main, .wrap, footer { 
-                margin: 0 !important; padding: 0 !important;
-                max-height: 100vh !important; overflow: hidden !important;
-            }
-            footer, .footer, .built-with { display: none !important; }
-        """
+        server_port=7863
     )

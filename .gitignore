@@ -18,3 +18,10 @@ artifacts/
 tests/test_candidates_slice.jsonl
 tests/test_submission.csv
 .pytest_cache/
+
+# Large raw dataset (provided separately, never committed)
+/candidates.jsonl
+
+# OS / archives
+.DS_Store
+candidates.zip
