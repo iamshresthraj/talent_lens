@@ -11,7 +11,7 @@ pinned: false
 
 # Talent Lens — Redrob Intelligent Candidate Ranking System
 
-[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/iamshresthraj/talentlens)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/iamshresthraj/talent_lens)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Sandbox-yellow)](https://huggingface.co/spaces/iamshresthraj/talentlens-sandbox)
 
 This repository contains our hackathon submission (**Talent Lens**) for the **Redrob Intelligent Candidate Discovery & Ranking Challenge**. The system ranks a 100,000-candidate dataset to find the top 100 fits for a founding Senior AI Engineer role at Redrob AI, running 100% offline in under 30 seconds.

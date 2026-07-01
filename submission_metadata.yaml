@@ -13,7 +13,7 @@ team_members:
     email: "TODO_member_1_email"
   # add additional members as needed
 
-github_repository: "https://github.com/iamshresthraj/talentlens"
+github_repository: "https://github.com/iamshresthraj/talent_lens"
 sandbox_app_link: "https://huggingface.co/spaces/iamshresthraj/talentlens-sandbox"
 
 # Single command that reproduces submission.csv from data/candidates.jsonl,
