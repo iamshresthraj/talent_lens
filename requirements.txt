@@ -13,7 +13,7 @@ torch==2.8.0
 
 # Sandbox demo app only (sandbox/app.py) — NOT needed for the reproduce command.
 gradio>=4.36.0
-llama-cpp-python==0.3.2
+# llama-cpp-python==0.3.2  # Commented out to prevent HuggingFace build OOMKilled errors. Install manually for local LLM reasoning.
 
 # Test suite only.
 pytest==8.3.4
