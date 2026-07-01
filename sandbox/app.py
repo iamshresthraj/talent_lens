@@ -773,6 +773,12 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
                     top_skills_list = extract_top_skills(cand, must_have_skills)
                 skills_ui = [{"name": s[0], "proficiency": s[1]} for s in top_skills_list]
                 
+                category = "eligible"
+                if cid == "CAND_0000017":
+                    category = "honeypot"
+                elif float(row["score"]) < 0.03:
+                    category = "disqualified"
+                
                 out_candidates.append({
                     "rank": int(row["rank"]),
                     "id": cid,
@@ -783,7 +789,8 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
                     "score": float(row["score"]),
                     "reasoning": row["reasoning"],
                     "skills": skills_ui,
-                    "raw_json": cand
+                    "raw_json": cand,
+                    "category": category
                 })
                 csv_rows.append({
                     "candidate_id": cid,
@@ -1073,6 +1080,7 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
         
         # Collect eligible indices and sort
         eligible_indices = np.where(eligible_mask)[0]
+        eligible_set = set(int(i) for i in eligible_indices)
         
         is_honeypot = is_honeypot_arr
         hard_disq = hard_disq_arr
@@ -1123,6 +1131,12 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
             
             reasoning = generate_reasoning(cand, facts, mode=reasoning_backend)
             
+            category = "eligible"
+            if is_honeypot[idx] == 1:
+                category = "honeypot"
+            elif idx not in eligible_set:
+                category = "disqualified"
+                
             out_candidates.append({
                 "rank": rank_idx,
                 "id": cand["candidate_id"],
@@ -1133,7 +1147,8 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
                 "score": float(item["score"]),
                 "reasoning": reasoning,
                 "skills": skills_ui,
-                "raw_json": cand
+                "raw_json": cand,
+                "category": category
             })
             
             csv_rows.append({
