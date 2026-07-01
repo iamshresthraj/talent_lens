@@ -1225,9 +1225,13 @@ with gr.Blocks(**_blocks_kwargs) as demo:
 
 if __name__ == "__main__":
     ensure_sample_candidates()
+    is_hf = "SPACE_ID" in os.environ
+    server_name = "0.0.0.0" if is_hf else "127.0.0.1"
+    server_port = 7860 if is_hf else 7863
+    print(f"Starting server on {server_name}:{server_port} (HF Space: {is_hf})")
     demo.launch(
-        server_name="127.0.0.1",
-        server_port=7863,
+        server_name=server_name,
+        server_port=server_port,
         **_launch_kwargs
     )
 
