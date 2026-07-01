@@ -363,23 +363,87 @@ def run_sandbox_ranking(file_obj, semantic_w, skill_w, lexical_w, struct_w, logi
 
 
 # Build Gradio UI
-theme = gr.themes.Soft(
-    primary_hue="indigo",
-    secondary_hue="slate",
+theme = gr.themes.Default(
+    primary_hue=gr.themes.colors.red,
+    neutral_hue=gr.themes.colors.slate,
     font=[gr.themes.GoogleFont("Outfit"), "sans-serif"]
 )
 
-with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css="footer {visibility: hidden}") as demo:
+css = """
+body, html, .gradio-container {
+    background-color: #1A1A2E !important;
+    color: #F9F9F9 !important;
+    font-family: 'Outfit', sans-serif;
+}
+/* Style block headings */
+h1, h2, h3, h4, h5, h6, p, span, li, label, .block-title, .form-title {
+    color: #F9F9F9 !important;
+}
+/* Backgrounds of main panels */
+.gr-block, .gr-box, div.form, .block, .panel {
+    background-color: #16213E !important;
+    border: 1px solid #0F3460 !important;
+}
+/* Primary buttons */
+button.primary, button.gr-button-primary {
+    background-color: #E94560 !important;
+    color: #F9F9F9 !important;
+    border: none !important;
+    font-weight: 600 !important;
+    transition: background 0.2s ease !important;
+}
+button.primary:hover, button.gr-button-primary:hover {
+    background-color: #0F3460 !important;
+}
+/* Form inputs and text fields */
+input, select, textarea, .gr-text-input {
+    background-color: #16213E !important;
+    color: #F9F9F9 !important;
+    border: 1px solid #0F3460 !important;
+}
+input:focus, select:focus, textarea:focus {
+    border-color: #E94560 !important;
+}
+/* Sliders */
+input[type="range"] {
+    accent-color: #E94560 !important;
+}
+/* File uploads */
+.upload-button, .file-preview, .gr-file {
+    background-color: #16213E !important;
+    border: 1px dashed #0F3460 !important;
+}
+/* Tables styling */
+table {
+    background-color: #16213E !important;
+    color: #F9F9F9 !important;
+}
+th {
+    background-color: #0F3460 !important;
+    color: #F9F9F9 !important;
+    font-weight: bold !important;
+}
+td {
+    background-color: #16213E !important;
+    color: #F9F9F9 !important;
+    border-bottom: 1px solid #0F3460 !important;
+}
+footer {
+    visibility: hidden;
+}
+"""
+
+with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=css) as demo:
     gr.Markdown(
         """
-        # 🌌 Redrob AI Candidate Discovery & Ranking Sandbox
-        ### Founding Senior AI Engineer Role — Noida/Pune Hybrid
+        # Redrob AI Candidate Discovery and Ranking Sandbox
+        ### Founding Senior AI Engineer Role - Noida/Pune Hybrid
         """
     )
     
     with gr.Row():
         with gr.Column(scale=1):
-            gr.Markdown("### 🛠️ Configuration & Inputs")
+            gr.Markdown("### Configuration and Inputs")
             
             file_input = gr.File(
                 label="Upload Candidates (JSON / JSONL)",
@@ -388,7 +452,7 @@ with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=
             )
             gr.Markdown("*Leave empty to use the bundled sample of 100 profiles from the dataset.*")
             
-            with gr.Accordion("⚖️ Weight Calibration", open=False):
+            with gr.Accordion("Weight Calibration", open=False):
                 w_semantic = gr.Slider(0.0, 1.0, value=0.28, step=0.01, label="Semantic Vector Fit Weight")
                 w_skills = gr.Slider(0.0, 1.0, value=0.20, step=0.01, label="Skill Depth Weight")
                 w_lexical = gr.Slider(0.0, 1.0, value=0.12, step=0.01, label="Lexical TF-IDF Weight")
@@ -398,17 +462,17 @@ with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=
             reasoning_backend = gr.Radio(
                 choices=["template", "llm"],
                 value="template",
-                label="📝 Reasoning Generation Backend",
+                label="Reasoning Generation Backend",
                 info="LLM mode uses a local, CPU-based Qwen-0.5B model. Template mode is deterministic and fast."
             )
             
-            btn_run = gr.Button("🚀 Rank Candidates", variant="primary")
+            btn_run = gr.Button("Rank Candidates", variant="primary")
             
         with gr.Column(scale=2):
-            gr.Markdown("### 📊 Ranking Results")
+            gr.Markdown("### Ranking Results")
             status_output = gr.Markdown("Click **Rank Candidates** to run the discovery pipeline.")
             
-            csv_output = gr.File(label="📥 Download Ranked CSV Submission")
+            csv_output = gr.File(label="Download Ranked CSV Submission")
             
             table_output = gr.DataFrame(
                 headers=["Rank", "Candidate ID", "Name", "Current Title", "Experience (Yrs)", "Location", "Score", "Reasoning"],
@@ -424,4 +488,4 @@ with gr.Blocks(theme=theme, title="Redrob AI Intelligent Candidate Ranker", css=
 
 if __name__ == "__main__":
     ensure_sample_candidates()
-    demo.launch(server_name="127.0.0.1", server_port=7860)
+    demo.launch(server_name="127.0.0.1", server_port=7861)
