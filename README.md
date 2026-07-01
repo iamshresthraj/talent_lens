@@ -5,6 +5,7 @@ colorFrom: indigo
 colorTo: gray
 sdk: gradio
 sdk_version: 4.36.1
+python_version: 3.10
 app_file: sandbox/app.py
 pinned: false
 ---
