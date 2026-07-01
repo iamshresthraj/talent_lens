@@ -1,7 +1,7 @@
 # Redrob Candidate Ranker — Presentation Outline
 
 ## Slide 1: Title & Thesis
-- **Title**: Redrob Intelligent Candidate Ranking System (Antigravity Ranker)
+- **Title**: Redrob Intelligent Candidate Ranking System (TalentLens Ranker)
 - **Subtitle**: Ranking by structural & behavioral understanding, not raw keywords
 - **Core Thesis**: Keyword matching is easily gamed. An production-ready recruitment ranker must integrate semantic matching, lexical precision, structural rules, and behavioral signals to filter out adversaries (honeypots, keyword stuffers) and discover available, qualified engineers.
 
@@ -96,7 +96,7 @@
   - 12% Lexical Fit (TF-IDF Similarity)
   - 30% Structural Fit (experience band + production evidence - soft penalties)
   - 10% Logistics Fit (relocation + notice period + salary sanity)
-- **Baseline Deviations**: A naive system ranking by embeddings alone would rank keyword-stuffed job-hoppers or IT consulting generalists highly. The Antigravity system successfully penalizes these generalists and elevates India-based product engineers with deep ranking-specific skills.
+- **Baseline Deviations**: A naive system ranking by embeddings alone would rank keyword-stuffed job-hoppers or IT consulting generalists highly. The TalentLens system successfully penalizes these generalists and elevates India-based product engineers with deep ranking-specific skills.
 
 ---
 
