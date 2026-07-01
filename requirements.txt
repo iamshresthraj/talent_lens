@@ -1,3 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # Core ranking pipeline — required by scripts/01-04 and rank.py.
 # Versions pinned to the exact set used to produce the submission (Python 3.10+).
 numpy==2.0.2
@@ -9,10 +11,11 @@ psutil==7.2.2
 huggingface_hub==0.36.2
 sentence-transformers==5.1.2
 transformers==4.57.6
-torch==2.8.0
+torch
 
 # Sandbox demo app only (sandbox/app.py) — NOT needed for the reproduce command.
 gradio>=4.36.0
+pypdf
 # llama-cpp-python==0.3.2  # Commented out to prevent HuggingFace build OOMKilled errors. Install manually for local LLM reasoning.
 
 # Test suite only.
