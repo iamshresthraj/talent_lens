@@ -86,25 +86,33 @@ def parse_jd(jd_text: str) -> dict:
         jd_text = ""
         
     jd_lower = jd_text.lower()
-    
+
     # 1. Detect Role Type
-    role_type = "ml_ai" # Default
-    if "frontend" in jd_lower or "react engineer" in jd_lower:
-        role_type = "frontend"
-    elif "backend" in jd_lower or "go engineer" in jd_lower or "python api" in jd_lower:
-        role_type = "backend"
-    elif "full stack" in jd_lower or "full-stack" in jd_lower or "fullstack" in jd_lower:
-        role_type = "fullstack"
-    elif "devops" in jd_lower or "platform engineer" in jd_lower or "sre" in jd_lower or "infrastructure" in jd_lower:
-        role_type = "devops"
-    elif "data engineer" in jd_lower or "etl" in jd_lower or "data warehouse" in jd_lower:
-        role_type = "data_engineer"
-    elif "product manager" in jd_lower or "tpm" in jd_lower or "technical product" in jd_lower:
-        role_type = "tpm"
-    elif "mobile" in jd_lower or "ios" in jd_lower or "android" in jd_lower or "react native" in jd_lower:
-        role_type = "mobile"
-    elif "ai engineer" in jd_lower or "machine learning" in jd_lower or "ml" in jd_lower or "nlp" in jd_lower:
-        role_type = "ml_ai"
+    # Score each role by counting word-boundaried keyword hits rather than taking the
+    # first substring match in a fixed if/elif order. The old ordering let generic terms
+    # (e.g. "infrastructure" -> devops, "frontend" mentioned in passing) win over the
+    # role's actual, more specific signals, causing many different JDs to collapse onto
+    # the same role_type (and therefore the same weights/skill taxonomy/output).
+    ROLE_KEYWORDS = {
+        "mobile": [r"\bmobile\b", r"\bios\b", r"\bandroid\b", r"react native"],
+        "data_engineer": [r"data engineer", r"\betl\b", r"data warehouse", r"data pipeline"],
+        "tpm": [r"product manager", r"\btpm\b", r"technical product"],
+        "devops": [r"\bdevops\b", r"platform engineer", r"\bsre\b", r"\binfrastructure\b", r"site reliability"],
+        "fullstack": [r"full[\s-]?stack"],
+        "frontend": [r"\bfrontend\b", r"front-end", r"react engineer", r"\bui engineer\b"],
+        "backend": [r"\bbackend\b", r"back-end", r"go engineer", r"python api"],
+        "ml_ai": [r"ai engineer", r"machine learning", r"\bnlp\b", r"\bml engineer\b", r"\bmlops\b", r"\bllm\b"],
+    }
+    # Tie-break order: more specific role types first, generic "ml_ai" catch-all last.
+    ROLE_PRIORITY = ["mobile", "data_engineer", "tpm", "devops", "fullstack", "frontend", "backend", "ml_ai"]
+
+    role_scores = {role: 0 for role in ROLE_KEYWORDS}
+    for role, patterns in ROLE_KEYWORDS.items():
+        for pattern in patterns:
+            role_scores[role] += len(re.findall(pattern, jd_lower))
+
+    best_role = max(ROLE_PRIORITY, key=lambda r: (role_scores[r], -ROLE_PRIORITY.index(r)))
+    role_type = best_role if role_scores[best_role] > 0 else "ml_ai"
         
     # Check if this matches the default Senior AI Engineer - Founding Team JD text/context
     is_default_ai_role = "redrob" in jd_lower and ("founding team" in jd_lower or "founding senior ai" in jd_lower)
