@@ -163,3 +163,280 @@ def min_max_normalize(scores: np.ndarray) -> np.ndarray:
     if s_max == s_min:
         return np.ones_like(scores)
     return (scores - s_min) / (s_max - s_min)
+
+
+# ---------------------------------------------------------------------------
+# JD-aware recruiter scoring (shared by rank.py and sandbox/app.py)
+#
+# Historically rank.py and both sandbox ranking paths each carried their own
+# copy of the recruiter scoring loop with the must-have / good-to-have
+# categories HARDCODED to the default Senior AI Engineer role. That meant the
+# dominant score component (the must-have tier band) was identical for every
+# job description, so every JD produced (nearly) the same ranked CSV. The
+# functions below take the parsed JD's rubric as input so the ranking follows
+# the actual JD.
+# ---------------------------------------------------------------------------
+
+try:
+    from src.rules import (
+        detect_honeypot,
+        check_pure_research_no_production,
+        check_irrelevant_role,
+        check_experience_band_score,
+        check_location_fit,
+    )
+except ImportError:  # pragma: no cover - direct module import fallback
+    from rules import (
+        detect_honeypot,
+        check_pure_research_no_production,
+        check_irrelevant_role,
+        check_experience_band_score,
+        check_location_fit,
+    )
+
+# Terms that denote a bare programming language. A must-have category made up
+# solely of these gets the "listed skill + role-matching title" evidence
+# shortcut (generalization of the old strong_python special case).
+LANGUAGE_TERMS = {
+    "python", "go", "golang", "java", "c#", ".net", "ruby", "node.js",
+    "javascript", "typescript", "ts", "js", "swift", "kotlin", "objective-c",
+    "scala", "php", "sql", "bash", "shell", "c++",
+}
+
+# Title fragments that make a candidate's current role plausible evidence for
+# a language-only must-have category, per target role type.
+ROLE_TITLE_HINTS = {
+    "ml_ai": ["ml", "ai", "data", "search", "recommend", "nlp", "backend"],
+    "backend": ["backend", "back-end", "software", "platform", "api", "sde", "developer", "engineer"],
+    "frontend": ["frontend", "front-end", "ui", "web", "software", "developer", "engineer"],
+    "fullstack": ["full stack", "full-stack", "fullstack", "software", "web", "developer", "engineer"],
+    "devops": ["devops", "sre", "platform", "infrastructure", "cloud", "reliability", "systems"],
+    "data_engineer": ["data", "etl", "analytics", "platform", "engineer"],
+    "tpm": ["product", "program", "tpm", "manager"],
+    "mobile": ["mobile", "ios", "android", "app", "developer", "engineer"],
+}
+
+# Generic technical-title fragments used to accept free-text evidence.
+TECH_TITLE_HINTS = ["engineer", "scientist", "developer", "programmer", "architect", "analyst", "mle", "lead"]
+
+
+def _category_terms(cat_def):
+    """Accept either {'terms': [...]} dicts or plain term lists."""
+    if isinstance(cat_def, dict):
+        return cat_def.get("terms", [])
+    return list(cat_def or [])
+
+
+def check_must_have_matches(candidate: dict, must_have_skills: dict, role_type: str = "ml_ai") -> int:
+    """
+    Count how many of the JD's must-have skill categories the candidate
+    satisfies with supporting evidence (career-history mention, >=12 months of
+    use, endorsements, a role-matching title for language-only categories, or
+    free-text evidence in a technical profile).
+    """
+    skills = candidate.get("skills", [])
+    history = candidate.get("career_history", [])
+    profile = candidate.get("profile", {})
+
+    headline = profile.get("headline", "").lower()
+    summary = profile.get("summary", "").lower()
+    history_text = " ".join([
+        (job.get("title", "") + " " + job.get("description", "")).lower()
+        for job in history
+    ])
+    profile_text = f"{headline} {summary} {history_text}"
+    current_title = profile.get("current_title", "").lower()
+    role_hints = ROLE_TITLE_HINTS.get(role_type, TECH_TITLE_HINTS)
+
+    matched_count = 0
+    for cat, cat_def in must_have_skills.items():
+        terms = _category_terms(cat_def)
+        is_lang_cat = bool(terms) and all(t.lower() in LANGUAGE_TERMS for t in terms)
+
+        has_skill_in_list = False
+        for s in skills:
+            name = s.get("name", "").lower()
+            if any(match_skill_term(t, name) for t in terms):
+                in_history = any(t in history_text for t in terms)
+                long_duration = s.get("duration_months", 0) >= 12
+                has_endorsements = s.get("endorsements", 0) > 0
+                is_role_title = any(r in current_title for r in role_hints)
+
+                if in_history or long_duration or has_endorsements or (is_lang_cat and is_role_title):
+                    has_skill_in_list = True
+                    break
+
+        has_text_evidence = False
+        if any(t in profile_text for t in terms):
+            if any(r in current_title for r in TECH_TITLE_HINTS):
+                has_text_evidence = True
+
+        if has_skill_in_list or has_text_evidence:
+            matched_count += 1
+    return matched_count
+
+
+def check_good_to_have_matches(candidate: dict, good_to_have_skills: dict) -> int:
+    """Count matched nice-to-have categories from the JD's rubric."""
+    skills = candidate.get("skills", [])
+    count = 0
+    for cat, cat_def in (good_to_have_skills or {}).items():
+        terms = _category_terms(cat_def)
+        for s in skills:
+            name = s.get("name", "").lower()
+            if any(match_skill_term(t, name) for t in terms):
+                count += 1
+                break
+    return count
+
+
+def must_have_band(matched_count: int, total_categories: int):
+    """
+    Map the fraction of satisfied must-have categories to a recruiter score
+    band. With the default 4-category rubric this reproduces the original
+    behavior exactly (4/4 -> top band, 3/4 -> middle band, else low band).
+    """
+    if total_categories <= 0:
+        return 0.10, 0.25
+    frac = matched_count / float(total_categories)
+    if frac >= 0.999:
+        return 0.70, 0.85
+    if frac >= 0.70:
+        return 0.40, 0.55
+    return 0.10, 0.25
+
+
+def score_candidates(
+    candidates,
+    features_df,
+    semantic_fit,
+    skill_depth_fit,
+    lexical_fit,
+    must_have_skills,
+    good_to_have_skills,
+    role_type: str = "ml_ai",
+    experience_band: dict = None,
+    fit_weights=None,
+    preferred_locations=None,
+    preferred_country: str = "india",
+    current_date_str: str = "2026-06-17",
+):
+    """
+    JD-aware recruiter scoring. Returns (final_scores, eligible_mask).
+
+    - must_have_skills / good_to_have_skills drive the tier band and bonuses
+      (previously hardcoded to the default AI role for every JD).
+    - The ML/NLP-specific soft disqualifiers (LangChain-only, CV/robotics
+      without NLP) only apply when the target role is ml_ai.
+    - experience_band, fit_weights and preferred_locations are optional; when
+      omitted the scoring matches the original default-JD behavior exactly.
+    """
+    n = len(candidates)
+    final_scores = np.zeros(n)
+    eligible_mask = np.ones(n, dtype=bool)
+
+    is_honeypot_arr = features_df["is_honeypot"].values
+    hard_disq_arr = features_df["hard_disqualified"].values
+
+    # Blend weights for semantic / skill-depth / lexical fit inside the band.
+    if fit_weights:
+        w_sem, w_skill, w_lex = fit_weights
+        w_tot = (w_sem + w_skill + w_lex) or 1.0
+        w_sem, w_skill, w_lex = w_sem / w_tot, w_skill / w_tot, w_lex / w_tot
+    else:
+        w_sem, w_skill, w_lex = 0.5, 0.3, 0.2
+
+    ml_specific_disq = role_type == "ml_ai"
+    total_categories = len(must_have_skills)
+
+    for idx, cand in enumerate(candidates):
+        row_feat = features_df.iloc[idx]
+
+        # Hard disqualifiers (role-independent) + role mismatch
+        is_hp = is_honeypot_arr[idx] == 1 or detect_honeypot(cand)
+        is_irrelevant = check_irrelevant_role(cand, role_type)
+        is_pure_res = hard_disq_arr[idx] == 1 or check_pure_research_no_production(cand)
+
+        # Generic soft disqualifiers
+        is_consulting = row_feat["soft_disq_consulting_only"] == 1
+        is_senior_nocode = row_feat["soft_disq_senior_no_code"] == 1
+        is_hopper = row_feat["soft_disq_title_chaser"] == 1
+        is_closed_source = row_feat["soft_disq_closed_source"] == 1
+
+        # ML/NLP-specific soft disqualifiers only make sense for ml_ai JDs
+        is_cv_robotics = ml_specific_disq and row_feat["soft_disq_cv_speech_robotics"] == 1
+        is_langchain = ml_specific_disq and row_feat["soft_disq_recent_langchain"] == 1
+
+        disq_scores = []
+        if is_hp: disq_scores.append(0.0)
+        if is_irrelevant: disq_scores.append(0.0)
+        if is_pure_res: disq_scores.append(0.05)
+        if is_consulting: disq_scores.append(0.03)
+        if is_cv_robotics: disq_scores.append(0.07)
+        if is_senior_nocode: disq_scores.append(0.08)
+        if is_langchain: disq_scores.append(0.12)
+        if is_hopper: disq_scores.append(0.10)
+        if is_closed_source: disq_scores.append(0.09)
+
+        if disq_scores:
+            final_scores[idx] = min(disq_scores)
+            eligible_mask[idx] = False
+            continue
+
+        # Must-have tier band from the JD's own rubric
+        matched_must = check_must_have_matches(cand, must_have_skills, role_type)
+        range_min, range_max = must_have_band(matched_must, total_categories)
+
+        s_val = w_sem * semantic_fit[idx] + w_skill * skill_depth_fit[idx] + w_lex * lexical_fit[idx]
+        base_score = range_min + s_val * (range_max - range_min)
+
+        # Adjustments
+        adj = 0.0
+
+        gth_count = check_good_to_have_matches(cand, good_to_have_skills)
+        adj += gth_count * 0.03
+
+        signals = cand.get("redrob_signals", {})
+        last_active_str = signals.get("last_active_date", "")
+        days_since = 365
+        if last_active_str:
+            try:
+                curr_date = datetime.strptime(current_date_str, "%Y-%m-%d").date()
+                act_date = datetime.strptime(last_active_str, "%Y-%m-%d").date()
+                days_since = (curr_date - act_date).days
+            except Exception:
+                pass
+
+        if days_since <= 30:
+            adj += 0.03
+        elif days_since >= 180:
+            adj -= 0.05
+
+        if signals.get("open_to_work_flag", False):
+            adj += 0.02
+
+        notice_days = signals.get("notice_period_days", 0)
+        if notice_days <= 30:
+            adj += 0.03
+        elif notice_days <= 60:
+            adj += 0.01
+
+        if notice_days > 90:
+            adj -= 0.02
+        if notice_days > 120:
+            adj -= 0.04
+
+        # JD-specific experience band: no penalty inside the band, up to
+        # -0.15 for candidates far outside it.
+        if experience_band is not None:
+            exp_fit = check_experience_band_score(cand, experience_band)
+            adj += (exp_fit - 1.0) * 0.15
+
+        # JD-specific location preference: +/-0.03 around neutral.
+        if preferred_locations:
+            loc_fit = check_location_fit(cand, preferred_locations, preferred_country)
+            adj += (loc_fit - 0.5) * 0.06
+
+        final_scores[idx] = max(0.0, min(1.0, base_score + adj))
+
+    return final_scores, eligible_mask

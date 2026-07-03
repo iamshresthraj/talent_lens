@@ -34,6 +34,8 @@ from src.scoring import (
     compute_behavioral_multiplier,
     min_max_normalize,
     match_skill_term
+,
+    score_candidates,
 )
 from src.reasoning import generate_reasoning
 from src.jd_parser import parse_jd
@@ -144,56 +146,16 @@ def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skil
     
 
     
-    # 1. Parse Experience Band
-    soft_min, soft_max = 5, 9
-    match = re.search(r'(\d+)\s*(?:to|-)\s*(\d+)\s*years?', jd_lower)
-    if match:
-        soft_min = int(match.group(1))
-        soft_max = int(match.group(2))
-    else:
-        match_plus = re.search(r'(\d+)\s*\+\s*years?', jd_lower)
-        if match_plus:
-            soft_min = int(match_plus.group(1))
-            soft_max = soft_min + 4
-            
-    exp_band = {
-        "soft_min": soft_min,
-        "soft_max": soft_max,
-        "hard_floor": max(1, soft_min - 2),
-        "hard_ceiling": soft_max + 7
-    }
-    
-    # 2. Parse Locations
-    cities = ["pune", "noida", "hyderabad", "bangalore", "bengaluru", "mumbai", "delhi", "gurgaon", "gurugram", "ncr", "chennai"]
-    pref_locations = [c for c in cities if c in jd_lower]
-    if not pref_locations:
-        pref_locations = jd_config.get("preferred_locations", ["pune", "noida"])
-        
-    # 3. Parse Skills
-    common_skills = {
-        "python": ["python"],
-        "pytorch": ["pytorch"],
-        "tensorflow": ["tensorflow", "keras"],
-        "scikit-learn": ["scikit-learn", "sklearn"],
-        "xgboost": ["xgboost", "lightgbm"],
-        "pandas": ["pandas", "numpy"],
-        "sql": ["sql", "postgresql", "mysql"],
-        "elasticsearch": ["elasticsearch", "opensearch"],
-        "pinecone": ["pinecone", "weaviate", "qdrant", "milvus", "faiss"],
-        "embeddings": ["embeddings", "dense retrieval"],
-        "llm": ["llm", "langchain", "llama", "gpt", "openai"],
-        "nlp": ["nlp", "natural language", "bert", "transformers"]
-    }
-    
-    must_have_skills = {}
-    for skill_key, terms in common_skills.items():
-        if any(term in jd_lower for term in terms):
-            must_have_skills[skill_key] = {"weight": 1.0, "terms": terms}
-            
-    if not must_have_skills:
-        must_have_skills = jd_config.get("must_have_skills", {
-            "python": {"weight": 1.0, "terms": ["python"]}
-        })
+    # 1-3. Parse the JD (role type, must/nice-to-have skills, experience band,
+    # preferred locations) with the shared parser so the ranking rubric follows
+    # the actual JD instead of a hardcoded ML/AI skill sniff list.
+    parsed_jd_info = parse_jd(jd_text)
+    role_type = parsed_jd_info["role_type"]
+    must_have_skills = parsed_jd_info["must_have_skills"]
+    nice_to_have_skills = parsed_jd_info.get("nice_to_have_skills") or jd_config.get("nice_to_have_skills", {})
+    exp_band = parsed_jd_info["experience_band"]
+
+    pref_locations = parsed_jd_info.get("preferred_locations") or jd_config.get("preferred_locations", ["pune", "noida"])
         
     consulting_firms = jd_config.get("consulting_firms", [])
     pref_country = jd_config.get("preferred_country", "india")
@@ -215,9 +177,11 @@ def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skil
     query_terms = []
     for s_def in must_have_skills.values():
         query_terms.extend(s_def.get("terms", []))
-    for s_def in jd_config.get("nice_to_have_skills", {}).values():
+    for s_def in nice_to_have_skills.values():
         query_terms.extend(s_def.get("terms", []))
-    query_text = " ".join(query_terms)
+    # Include the raw JD text so the lexical signal differentiates JDs that
+    # share skill lists but describe different work.
+    query_text = " ".join(query_terms) + " " + jd_text
     
     query_vec = vectorizer.transform([query_text])
     lexical_raw = tfidf_matrix.dot(query_vec.T).toarray().ravel()
@@ -286,179 +250,26 @@ def run_sandbox_ranking(file_obj, jd_text_input, jd_file_input, semantic_w, skil
         
     features_df = pd.DataFrame(features_list)
     
-    # --- Recruiter Scoring Logic (matches rank.py) ---
-    
-    # Helper to match skill terms
-    def match_skill_term_local(term: str, skill_name: str) -> bool:
-        term_lower = term.lower()
-        skill_lower = skill_name.lower()
-        if term_lower in ["c++", "c#", ".net"]:
-            return term_lower in skill_lower
-        if len(term_lower) <= 3:
-            pattern = r'\b' + re.escape(term_lower) + r'\b'
-            return bool(re.search(pattern, skill_lower))
-        return term_lower in skill_lower
+    # --- Recruiter Scoring Logic (JD-aware, shared with rank.py; see src/scoring.py) ---
+    final_scores, eligible_mask = score_candidates(
+        candidates,
+        features_df,
+        semantic_fit,
+        skill_depth_fit,
+        lexical_fit,
+        must_have_skills,
+        nice_to_have_skills,
+        role_type=role_type,
+        experience_band=exp_band,
+        preferred_locations=pref_locations,
+        preferred_country=pref_country,
+    )
 
-    # Helper to check must-have matches with supporting evidence
-    def check_must_have_matches(cand):
-        skills = cand.get("skills", [])
-        history = cand.get("career_history", [])
-        profile_inner = cand.get("profile", {})
-        
-        headline = profile_inner.get("headline", "").lower()
-        summary_text = profile_inner.get("summary", "").lower()
-        
-        history_text = " ".join([
-            (job.get("title", "") + " " + job.get("description", "")).lower()
-            for job in history
-        ])
-        
-        profile_text = f"{headline} {summary_text} {history_text}"
-        
-        categories = {
-            "embeddings_retrieval": ["sentence-transformers", "openai embeddings", "bge", "e5", "embeddings", "dense retrieval", "semantic search"],
-            "vector_db_hybrid_search": ["pinecone", "weaviate", "qdrant", "milvus", "opensearch", "elasticsearch", "faiss", "hybrid search", "vector database"],
-            "strong_python": ["python"],
-            "eval_frameworks": ["ndcg", "mrr", "map", "a/b test", "ab testing", "offline evaluation", "online evaluation", "ranking evaluation"]
-        }
-        
-        matched_count = 0
-        for cat, terms in categories.items():
-            has_skill_in_list = False
-            for s in skills:
-                name = s.get("name", "").lower()
-                if any(match_skill_term_local(t, name) for t in terms):
-                    in_history = any(t in history_text for t in terms)
-                    long_duration = s.get("duration_months", 0) >= 12
-                    has_endorsements = s.get("endorsements", 0) > 0
-                    is_ml_role = any(r in profile_inner.get("current_title", "").lower() for r in ["ml", "ai", "data", "search", "recommend", "nlp", "backend"])
-                    
-                    if in_history or long_duration or has_endorsements or (cat == "strong_python" and is_ml_role):
-                        has_skill_in_list = True
-                        break
-            
-            has_text_evidence = False
-            if any(t in profile_text for t in terms):
-                is_tech_role = any(r in profile_inner.get("current_title", "").lower() for r in ["engineer", "scientist", "developer", "programmer", "architect", "analyst", "mle", "lead"])
-                if is_tech_role:
-                    has_text_evidence = True
-                    
-            if has_skill_in_list or has_text_evidence:
-                matched_count += 1
-        return matched_count
-
-    # Helper to check good-to-haves
-    def check_good_to_have_matches(cand):
-        skills = cand.get("skills", [])
-        good_to_haves = {
-            "llm_finetuning": ["lora", "qlora", "peft", "fine-tuning", "finetuning"],
-            "learning_to_rank": ["learning to rank", "ltr", "xgboost ranking", "neural ranking"],
-            "hr_tech": ["hr tech", "recruiting", "talent", "marketplace"],
-            "distributed_systems": ["distributed systems", "large-scale inference", "model serving at scale"],
-            "open_source": ["open source", "github", "publication", "paper", "conference talk"]
-        }
-        count = 0
-        for cat, terms in good_to_haves.items():
-            for s in skills:
-                name = s.get("name", "").lower()
-                if any(match_skill_term_local(t, name) for t in terms):
-                    count += 1
-                    break
-        return count
-    
-    final_scores = np.zeros(len(candidates))
-    is_honeypot_arr = features_df["is_honeypot"].values
-    hard_disq_arr = features_df["hard_disqualified"].values
-    eligible_mask = np.ones(len(candidates), dtype=bool)
-    
-    for idx, cand in enumerate(candidates):
-        row_feat = features_df.iloc[idx]
-        
-        # Check hard disqualifiers
-        is_hp = is_honeypot_arr[idx] == 1 or detect_honeypot(cand)
-        is_irrelevant = check_irrelevant_role(cand, "ml_ai")
-        is_pure_res = hard_disq_arr[idx] == 1 or check_pure_research_no_production(cand)
-        
-        is_consulting_d = row_feat["soft_disq_consulting_only"] == 1
-        is_cv_robotics_d = row_feat["soft_disq_cv_speech_robotics"] == 1
-        is_senior_nocode_d = row_feat["soft_disq_senior_no_code"] == 1
-        is_langchain_d = row_feat["soft_disq_recent_langchain"] == 1
-        is_hopper_d = row_feat["soft_disq_title_chaser"] == 1
-        is_closed_source_d = row_feat["soft_disq_closed_source"] == 1
-        
-        disq_scores = []
-        if is_hp: disq_scores.append(0.0)
-        if is_irrelevant: disq_scores.append(0.0)
-        if is_pure_res: disq_scores.append(0.05)
-        if is_consulting_d: disq_scores.append(0.03)
-        if is_cv_robotics_d: disq_scores.append(0.07)
-        if is_senior_nocode_d: disq_scores.append(0.08)
-        if is_langchain_d: disq_scores.append(0.12)
-        if is_hopper_d: disq_scores.append(0.10)
-        if is_closed_source_d: disq_scores.append(0.09)
-        
-        if disq_scores:
-            final_scores[idx] = min(disq_scores)
-            eligible_mask[idx] = False
-            continue
-            
-        # MUST_HAVE scoring
-        matched_must = check_must_have_matches(cand)
-        
-        if matched_must == 4:
-            range_min, range_max = 0.70, 0.85
-        elif matched_must == 3:
-            range_min, range_max = 0.40, 0.55
-        else:
-            range_min, range_max = 0.10, 0.25
-            
-        s_val = 0.5 * semantic_fit[idx] + 0.3 * skill_depth_fit[idx] + 0.2 * lexical_fit[idx]
-        base_score = range_min + s_val * (range_max - range_min)
-        
-        # Adjustments
-        adj = 0.0
-        
-        gth_count = check_good_to_have_matches(cand)
-        adj += gth_count * 0.03
-        
-        signals = cand.get("redrob_signals", {})
-        last_active_str = signals.get("last_active_date", "")
-        days_since = 365
-        if last_active_str:
-            try:
-                curr_date = datetime.strptime("2026-06-17", "%Y-%m-%d").date()
-                act_date = datetime.strptime(last_active_str, "%Y-%m-%d").date()
-                days_since = (curr_date - act_date).days
-            except:
-                pass
-        
-        if days_since <= 30:
-            adj += 0.03
-        elif days_since >= 180:
-            adj -= 0.05
-            
-        if signals.get("open_to_work_flag", False):
-            adj += 0.02
-            
-        notice_days = signals.get("notice_period_days", 0)
-        if notice_days <= 30:
-            adj += 0.03
-        elif notice_days <= 60:
-            adj += 0.01
-            
-        if notice_days > 90:
-            adj -= 0.02
-        if notice_days > 120:
-            adj -= 0.04
-            
-        score = base_score + adj
-        final_scores[idx] = max(0.0, min(1.0, score))
-    
     # Collect eligible indices and sort
     eligible_indices = np.where(eligible_mask)[0]
     
-    is_honeypot = is_honeypot_arr
-    hard_disq = hard_disq_arr
+    is_honeypot = features_df["is_honeypot"].values
+    hard_disq = features_df["hard_disqualified"].values
     
     sort_list = []
     for idx in eligible_indices:
@@ -740,9 +551,11 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
         query_terms = []
         for s_def in must_have_skills.values():
             query_terms.extend(s_def.get("terms", []))
-        for s_def in jd_config.get("nice_to_have_skills", {}).values():
+        for s_def in (parsed_jd.get("nice_to_have_skills") or jd_config.get("nice_to_have_skills", {})).values():
             query_terms.extend(s_def.get("terms", []))
-        query_text = " ".join(query_terms)
+        # Include the raw JD text so the lexical signal differentiates JDs
+        # that share skill lists but describe different work.
+        query_text = " ".join(query_terms) + " " + jd_text
         
         query_vec = vectorizer.transform([query_text])
         lexical_raw = tfidf_matrix.dot(query_vec.T).toarray().ravel()
@@ -811,180 +624,30 @@ def run_custom_ranking_api(jd_text_input, candidates_json_str, w_sem, w_ski, w_l
             
         features_df = pd.DataFrame(features_list)
         
-        # --- Recruiter Scoring Logic (matches rank.py) ---
-        
-        # Helper to match skill terms
-        def match_skill_term_local(term: str, skill_name: str) -> bool:
-            term_lower = term.lower()
-            skill_lower = skill_name.lower()
-            if term_lower in ["c++", "c#", ".net"]:
-                return term_lower in skill_lower
-            if len(term_lower) <= 3:
-                pattern = r'\b' + re.escape(term_lower) + r'\b'
-                return bool(re.search(pattern, skill_lower))
-            return term_lower in skill_lower
+        # --- Recruiter Scoring Logic (JD-aware, shared with rank.py; see src/scoring.py) ---
+        nice_to_have_skills = parsed_jd.get("nice_to_have_skills") or jd_config.get("nice_to_have_skills", {})
 
-        # Helper to check must-have matches with supporting evidence
-        def check_must_have_matches(cand):
-            skills = cand.get("skills", [])
-            history = cand.get("career_history", [])
-            profile_inner = cand.get("profile", {})
-            
-            headline = profile_inner.get("headline", "").lower()
-            summary_text = profile_inner.get("summary", "").lower()
-            
-            history_text = " ".join([
-                (job.get("title", "") + " " + job.get("description", "")).lower()
-                for job in history
-            ])
-            
-            profile_text = f"{headline} {summary_text} {history_text}"
-            
-            categories = {
-                "embeddings_retrieval": ["sentence-transformers", "openai embeddings", "bge", "e5", "embeddings", "dense retrieval", "semantic search"],
-                "vector_db_hybrid_search": ["pinecone", "weaviate", "qdrant", "milvus", "opensearch", "elasticsearch", "faiss", "hybrid search", "vector database"],
-                "strong_python": ["python"],
-                "eval_frameworks": ["ndcg", "mrr", "map", "a/b test", "ab testing", "offline evaluation", "online evaluation", "ranking evaluation"]
-            }
-            
-            matched_count = 0
-            for cat, terms in categories.items():
-                has_skill_in_list = False
-                for s in skills:
-                    name = s.get("name", "").lower()
-                    if any(match_skill_term_local(t, name) for t in terms):
-                        in_history = any(t in history_text for t in terms)
-                        long_duration = s.get("duration_months", 0) >= 12
-                        has_endorsements = s.get("endorsements", 0) > 0
-                        is_ml_role = any(r in profile_inner.get("current_title", "").lower() for r in ["ml", "ai", "data", "search", "recommend", "nlp", "backend"])
-                        
-                        if in_history or long_duration or has_endorsements or (cat == "strong_python" and is_ml_role):
-                            has_skill_in_list = True
-                            break
-                
-                has_text_evidence = False
-                if any(t in profile_text for t in terms):
-                    is_tech_role = any(r in profile_inner.get("current_title", "").lower() for r in ["engineer", "scientist", "developer", "programmer", "architect", "analyst", "mle", "lead"])
-                    if is_tech_role:
-                        has_text_evidence = True
-                        
-                if has_skill_in_list or has_text_evidence:
-                    matched_count += 1
-            return matched_count
+        final_scores, eligible_mask = score_candidates(
+            candidates,
+            features_df,
+            semantic_fit,
+            skill_depth_fit,
+            lexical_fit,
+            must_have_skills,
+            nice_to_have_skills,
+            role_type=role_type,
+            experience_band=exp_band,
+            preferred_locations=pref_locations,
+            preferred_country=pref_country,
+            fit_weights=(semantic_w, skill_w, lexical_w),
+        )
 
-        # Helper to check good-to-haves
-        def check_good_to_have_matches(cand):
-            skills = cand.get("skills", [])
-            good_to_haves = {
-                "llm_finetuning": ["lora", "qlora", "peft", "fine-tuning", "finetuning"],
-                "learning_to_rank": ["learning to rank", "ltr", "xgboost ranking", "neural ranking"],
-                "hr_tech": ["hr tech", "recruiting", "talent", "marketplace"],
-                "distributed_systems": ["distributed systems", "large-scale inference", "model serving at scale"],
-                "open_source": ["open source", "github", "publication", "paper", "conference talk"]
-            }
-            count = 0
-            for cat, terms in good_to_haves.items():
-                for s in skills:
-                    name = s.get("name", "").lower()
-                    if any(match_skill_term_local(t, name) for t in terms):
-                        count += 1
-                        break
-            return count
-        
-        final_scores = np.zeros(len(candidates))
-        is_honeypot_arr = features_df["is_honeypot"].values
-        hard_disq_arr = features_df["hard_disqualified"].values
-        eligible_mask = np.ones(len(candidates), dtype=bool)
-        
-        for idx, cand in enumerate(candidates):
-            row_feat = features_df.iloc[idx]
-            
-            # Check hard disqualifiers
-            is_hp = is_honeypot_arr[idx] == 1 or detect_honeypot(cand)
-            is_irrelevant = check_irrelevant_role(cand, role_type)
-            is_pure_res = hard_disq_arr[idx] == 1 or check_pure_research_no_production(cand)
-            
-            is_consulting = row_feat["soft_disq_consulting_only"] == 1
-            is_cv_robotics = row_feat["soft_disq_cv_speech_robotics"] == 1
-            is_senior_nocode = row_feat["soft_disq_senior_no_code"] == 1
-            is_langchain = row_feat["soft_disq_recent_langchain"] == 1
-            is_hopper = row_feat["soft_disq_title_chaser"] == 1
-            is_closed_source = row_feat["soft_disq_closed_source"] == 1
-            
-            disq_scores = []
-            if is_hp: disq_scores.append(0.0)
-            if is_irrelevant: disq_scores.append(0.0)
-            if is_pure_res: disq_scores.append(0.05)
-            if is_consulting: disq_scores.append(0.03)
-            if is_cv_robotics: disq_scores.append(0.07)
-            if is_senior_nocode: disq_scores.append(0.08)
-            if is_langchain: disq_scores.append(0.12)
-            if is_hopper: disq_scores.append(0.10)
-            if is_closed_source: disq_scores.append(0.09)
-            
-            if disq_scores:
-                final_scores[idx] = min(disq_scores)
-                eligible_mask[idx] = False
-                continue
-                
-            # MUST_HAVE scoring
-            matched_must = check_must_have_matches(cand)
-            
-            if matched_must == 4:
-                range_min, range_max = 0.70, 0.85
-            elif matched_must == 3:
-                range_min, range_max = 0.40, 0.55
-            else:
-                range_min, range_max = 0.10, 0.25
-                
-            s_val = 0.5 * semantic_fit[idx] + 0.3 * skill_depth_fit[idx] + 0.2 * lexical_fit[idx]
-            base_score = range_min + s_val * (range_max - range_min)
-            
-            # Adjustments
-            adj = 0.0
-            
-            gth_count = check_good_to_have_matches(cand)
-            adj += gth_count * 0.03
-            
-            signals = cand.get("redrob_signals", {})
-            last_active_str = signals.get("last_active_date", "")
-            days_since = 365
-            if last_active_str:
-                try:
-                    curr_date = datetime.strptime("2026-06-17", "%Y-%m-%d").date()
-                    act_date = datetime.strptime(last_active_str, "%Y-%m-%d").date()
-                    days_since = (curr_date - act_date).days
-                except:
-                    pass
-            
-            if days_since <= 30:
-                adj += 0.03
-            elif days_since >= 180:
-                adj -= 0.05
-                
-            if signals.get("open_to_work_flag", False):
-                adj += 0.02
-                
-            notice_days = signals.get("notice_period_days", 0)
-            if notice_days <= 30:
-                adj += 0.03
-            elif notice_days <= 60:
-                adj += 0.01
-                
-            if notice_days > 90:
-                adj -= 0.02
-            if notice_days > 120:
-                adj -= 0.04
-                
-            score = base_score + adj
-            final_scores[idx] = max(0.0, min(1.0, score))
-        
         # Collect eligible indices and sort
         eligible_indices = np.where(eligible_mask)[0]
         eligible_set = set(int(i) for i in eligible_indices)
         
-        is_honeypot = is_honeypot_arr
-        hard_disq = hard_disq_arr
+        is_honeypot = features_df["is_honeypot"].values
+        hard_disq = features_df["hard_disqualified"].values
         
         sort_list = []
         for idx in eligible_indices:

@@ -159,7 +159,18 @@ def parse_jd(jd_text: str) -> dict:
                     "weight": weight,
                     "terms": terms
                 }
-                
+
+        # Role-taxonomy skills that the JD does not explicitly call out become
+        # nice-to-haves, so the good-to-have bonus also follows the JD instead
+        # of the default AI role's hardcoded list.
+        if must_have_skills and not nice_to_have_skills:
+            for skill_key, skill_def in role_skills.items():
+                if skill_key not in must_have_skills:
+                    nice_to_have_skills[skill_key] = {
+                        "weight": skill_def.get("weight", 0.5),
+                        "terms": skill_def.get("terms", [])
+                    }
+
         # If still empty (e.g. custom JD with no matching skills), fall back to a generic skill set
         if not must_have_skills:
             must_have_skills = {
@@ -190,6 +201,12 @@ def parse_jd(jd_text: str) -> dict:
         "hard_ceiling": soft_max + 7
     }
     
+    # 2b. Parse preferred locations mentioned in the JD
+    known_cities = ["pune", "noida", "hyderabad", "bangalore", "bengaluru", "mumbai",
+                    "delhi", "gurgaon", "gurugram", "ncr", "chennai", "kolkata",
+                    "ahmedabad", "remote"]
+    preferred_locations = [c for c in known_cities if c in jd_lower]
+
     # 3. Weights selection
     weights = ROLE_WEIGHTS.get(role_type, DEFAULT_LINEAR_WEIGHTS).copy()
     if is_default_ai_role:
@@ -205,5 +222,6 @@ def parse_jd(jd_text: str) -> dict:
         "must_have_skills": must_have_skills,
         "nice_to_have_skills": nice_to_have_skills,
         "experience_band": exp_band,
-        "dimension_weights": weights
+        "dimension_weights": weights,
+        "preferred_locations": preferred_locations
     }
